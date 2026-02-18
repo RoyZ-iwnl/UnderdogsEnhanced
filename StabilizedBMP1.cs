@@ -21,6 +21,7 @@ namespace UnderdogsEnhanced
         public static MelonPreferences_Entry<bool> stab_konkurs;
         public static MelonPreferences_Entry<bool> stab_marder;
         public static MelonPreferences_Entry<bool> stab_brdm;
+        public static MelonPreferences_Entry<bool> marder_rangefinder;
 
         private GameObject[] vic_gos;
         private string[] invalid_scenes = new string[] { "MainMenu2_Scene", "LOADER_MENU", "LOADER_INITIAL", "t64_menu" };
@@ -33,6 +34,8 @@ namespace UnderdogsEnhanced
             stab_marder.Description = "Gives Marder series a stabilizer (default: enabled)";
             stab_brdm = cfg.CreateEntry("BRDM-2 Stabilizer", true);
             stab_brdm.Description = "Gives BRDM-2 a stabilizer (default: enabled)";
+            marder_rangefinder = cfg.CreateEntry("Marder Rangefinder", true);
+            marder_rangefinder.Description = "Gives Marder series laser rangefinder and parallax fix (default: enabled)";
          }
 
         public override async void OnSceneWasInitialized(int buildIndex, string sceneName)
@@ -134,8 +137,20 @@ namespace UnderdogsEnhanced
 
                     WeaponsManager weapons_manager = vic.GetComponent<WeaponsManager>();
                     WeaponSystemInfo main_gun_info = weapons_manager.Weapons[0];
+                    WeaponSystem main_gun = main_gun_info.Weapon;
+
                     stab_FCS_active.SetValue(main_gun_info.FCS, true);
                     main_gun_info.FCS.CurrentStabMode = StabilizationMode.Vector;
+
+                    if (marder_rangefinder.Value)
+                    {
+                        // 激光测距仪配置
+                        main_gun.FCS.MaxLaserRange = 4000;
+
+                        // 视差修正
+                        FieldInfo fixParallaxField = typeof(FireControlSystem).GetField("_fixParallaxForVectorMode", BindingFlags.Instance | BindingFlags.NonPublic);
+                        fixParallaxField.SetValue(main_gun.FCS, true);
+                    }
 
                     aimables[0].Stabilized = true;
                     stab_active.SetValue(aimables[0], true);
