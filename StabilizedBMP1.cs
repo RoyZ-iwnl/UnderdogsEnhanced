@@ -51,7 +51,7 @@ namespace StabilizedBMP1
 
                 string name = vic.FriendlyName;
 
-                if (name == "BMP-1" || name == "BMP-1P")
+                if (name == "BMP-1" || name == "BMP-1P" || name == "Marder 1A2" || name == "Marder A1-" || name == "Marder A1+")
                 {
                     AimablePlatform[] aimables = vic.AimablePlatforms;
                     FieldInfo stab_mode = typeof(AimablePlatform).GetField("_stabMode", BindingFlags.Instance | BindingFlags.NonPublic);
