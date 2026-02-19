@@ -34,10 +34,10 @@ namespace UnderdogsEnhanced
             stab_bmp.Description = "Gives BMP-1/BMP-1P a stabilizer (default: enabled)";
             stab_konkurs = cfg.CreateEntry("BMP-1P Konkurs Stab", false);
             stab_konkurs.Description = "Gives the Konkurs on the BMP-1P a stabilizer";
-            stab_marder = cfg.CreateEntry("Marder Stabilizer", true);
-            stab_marder.Description = "Gives Marder series a stabilizer (default: enabled)";
             stab_brdm = cfg.CreateEntry("BRDM-2 Stabilizer", true);
             stab_brdm.Description = "Gives BRDM-2 a stabilizer (default: enabled)";
+            stab_marder = cfg.CreateEntry("Marder Stabilizer", true);
+            stab_marder.Description = "Gives Marder series a stabilizer (default: enabled)";
             marder_rangefinder = cfg.CreateEntry("Marder Rangefinder", true);
             marder_rangefinder.Description = "Gives Marder series laser rangefinder and parallax fix (default: enabled)";
             leopard_laser = cfg.CreateEntry("Leopard 1 Laser", true);
