@@ -1,0 +1,41 @@
+# Underdogs Enhanced
+
+一个用于 **Gunner HEAT PC** 的 [MelonLoader](https://melonwiki.xyz/) Mod，为多款历史上装备了稳定器和激光测距仪功能。
+
+Underdogs 只是个玩笑，别当真。
+
+基于 [ATLAS](https://github.com/thebeninator/Stabilized-BMP-1) 的工作成果
+
+## 与 [Stabilized BMP-1](https://github.com/thebeninator/Stabilized-BMP-1) 的冲突
+
+## 功能
+
+| 载具 | 增强内容 | 默认状态 |
+|---|---|---|
+| BMP-1 / BMP-1P | 稳定器（炮管 + 炮塔） | 开启 |
+| BMP-1P | Konkurs 反坦克导弹稳定器 | 关闭 |
+| Marder 1A2 / A1- / A1+ | 稳定器 | 开启 |
+| Marder 1A2 / A1- / A1+ | 激光测距仪（4000m）+ 视差修正 | 开启 |
+| BRDM-2 | 稳定器 | 开启 |
+| Leopard 1A3 / A3A1 / A3A2 / A3A3 / A1A1 / A1A2 / A1A3 / A1A4 | 激光测距仪替换光学测距仪（4000m） | 开启 |
+
+## 安装
+
+可在 [GHPC Mod Manager](https://GHPC.DMR.gg/?lang=en) 上获取
+
+1. 为 GHPC 安装 [MelonLoader](https://melonwiki.xyz/#/?id=requirements)
+2. 将 `UnderdogsEnhanced.dll` 放入 `Mods/` 文件夹
+
+## 配置
+
+首次启动后，编辑 `UserData/MelonPreferences.cfg`：
+
+```
+[Underdogs-Enhanced]
+BMP-1 Stabilizer = true
+BMP-1P Konkurs Stab = false
+Marder Stabilizer = true
+BRDM-2 Stabilizer = true
+Marder Rangefinder = true
+Leopard 1 Laser = true
+```

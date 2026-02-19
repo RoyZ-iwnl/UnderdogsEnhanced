@@ -1,6 +1,8 @@
 # Underdogs Enhanced
 
-A [MelonLoader](https://melonwiki.xyz/) mod for **Gunner HEAT PC** that adds stabilizers and laser rangefinders to several vehicles that historically had them.
+[中文版](README_zh.md)
+
+A [MelonLoader](https://melonwiki.xyz/) mod for **Gunner HEAT PC** that adds stabilizers and laser rangefinders to several vehicles.
 
 Underdogs just a joke, don't be serious.
 
