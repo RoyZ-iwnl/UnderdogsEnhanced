@@ -18,6 +18,7 @@ namespace UnderdogsEnhanced
         private static readonly bool DEBUG_MODE = false;
 
         public static MelonPreferences_Category cfg;
+        public static MelonPreferences_Entry<bool> stab_bmp;
         public static MelonPreferences_Entry<bool> stab_konkurs;
         public static MelonPreferences_Entry<bool> stab_marder;
         public static MelonPreferences_Entry<bool> stab_brdm;
@@ -29,6 +30,8 @@ namespace UnderdogsEnhanced
 
         public override void OnInitializeMelon() {
             cfg = MelonPreferences.CreateCategory("Underdogs-Enhanced");
+            stab_bmp = cfg.CreateEntry("BMP-1 Stabilizer", true);
+            stab_bmp.Description = "Gives BMP-1/BMP-1P a stabilizer (default: enabled)";
             stab_konkurs = cfg.CreateEntry("BMP-1P Konkurs Stab", false);
             stab_konkurs.Description = "Gives the Konkurs on the BMP-1P a stabilizer";
             stab_marder = cfg.CreateEntry("Marder Stabilizer", true);
@@ -72,7 +75,7 @@ namespace UnderdogsEnhanced
 
                 string name = vic.FriendlyName;
 
-                if (name == "BMP-1" || name == "BMP-1P")
+                if (stab_bmp.Value && (name == "BMP-1" || name == "BMP-1P"))
                 {
                     AimablePlatform[] aimables = vic.AimablePlatforms;
 
