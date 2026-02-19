@@ -7,8 +7,8 @@
     <ProjectGuid>{B18AACF6-5522-4E9F-B94C-7B51A64F8D5A}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>StabilizedBMP1</RootNamespace>
-    <AssemblyName>StabilizedBMP1</AssemblyName>
+    <RootNamespace>UnderdogsEnhanced</RootNamespace>
+    <AssemblyName>UnderdogsEnhanced</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
@@ -72,7 +72,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="StabilizedBMP1.cs" />
+    <Compile Include="UnderdogsEnhanced.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

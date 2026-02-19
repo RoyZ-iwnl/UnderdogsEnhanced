@@ -22,6 +22,7 @@ namespace UnderdogsEnhanced
         public static MelonPreferences_Entry<bool> stab_marder;
         public static MelonPreferences_Entry<bool> stab_brdm;
         public static MelonPreferences_Entry<bool> marder_rangefinder;
+        public static MelonPreferences_Entry<bool> leopard_laser;
 
         private GameObject[] vic_gos;
         private string[] invalid_scenes = new string[] { "MainMenu2_Scene", "LOADER_MENU", "LOADER_INITIAL", "t64_menu" };
@@ -36,6 +37,8 @@ namespace UnderdogsEnhanced
             stab_brdm.Description = "Gives BRDM-2 a stabilizer (default: enabled)";
             marder_rangefinder = cfg.CreateEntry("Marder Rangefinder", true);
             marder_rangefinder.Description = "Gives Marder series laser rangefinder and parallax fix (default: enabled)";
+            leopard_laser = cfg.CreateEntry("Leopard 1 Laser", true);
+            leopard_laser.Description = "Replace optical rangefinder with laser on Leopard 1 series (default: enabled)";
          }
 
         public override async void OnSceneWasInitialized(int buildIndex, string sceneName)
@@ -191,6 +194,34 @@ namespace UnderdogsEnhanced
                     aimables[1].Stabilized = true;
                     stab_active.SetValue(aimables[1], true);
                     stab_mode.SetValue(aimables[1], StabilizationMode.Vector);
+                }
+
+                if (leopard_laser.Value && (name == "Leopard 1A3" || name == "Leopard 1A3A1" || name == "Leopard 1A3A2" ||
+                    name == "Leopard 1A3A3" || name == "Leopard A1A1" || name == "Leopard A1A2" ||
+                    name == "Leopard A1A3" || name == "Leopard A1A4"))
+                {
+                    WeaponsManager weapons_manager = vic.GetComponent<WeaponsManager>();
+                    WeaponSystemInfo main_gun_info = weapons_manager.Weapons[0];
+                    FireControlSystem fcs = main_gun_info.FCS;
+
+                    if (DEBUG_MODE)
+                    {
+                        MelonLogger.Msg($"=== {name} 激光测距改装 ===");
+                        MelonLogger.Msg($"原测距仪: {(fcs.OpticalRangefinder != null ? "存在" : "不存在")}");
+                    }
+
+                    if (fcs.OpticalRangefinder != null)
+                    {
+                        GameObject.Destroy(fcs.OpticalRangefinder);
+                    }
+
+                    fcs.LaserAim = LaserAimMode.ImpactPoint;
+                    fcs.MaxLaserRange = 4000f;
+
+                    if (DEBUG_MODE)
+                    {
+                        MelonLogger.Msg($"激光测距已启用 | 最大距离: {fcs.MaxLaserRange}m");
+                    }
                 }
             }
         }
