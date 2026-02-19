@@ -23,7 +23,7 @@ Based on work by [ATLAS](https://github.com/thebeninator/Stabilized-BMP-1)
 
 ## Installation
 
-Available on [GHPC Mod Manager](https://GHPC.DMR.gg/?lang=en)
+One key install Available on [GHPC Mod Manager](https://GHPC.DMR.gg/?lang=en)
 
 1. Install [MelonLoader](https://melonwiki.xyz/#/?id=requirements) for GHPC
 2. Drop `UnderdogsEnhanced.dll` into the `Mods/` folder

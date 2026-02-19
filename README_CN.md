@@ -21,7 +21,7 @@ Underdogs 只是个玩笑，别当真。
 
 ## 安装
 
-可在 [GHPC Mod Manager](https://GHPC.DMR.gg/?lang=en) 上获取
+在 [GHPC Mod Manager](https://GHPC.DMR.gg/) 上一键安装
 
 1. 为 GHPC 安装 [MelonLoader](https://melonwiki.xyz/#/?id=requirements)
 2. 将 `UnderdogsEnhanced.dll` 放入 `Mods/` 文件夹
