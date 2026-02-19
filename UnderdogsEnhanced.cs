@@ -25,7 +25,6 @@ namespace UnderdogsEnhanced
         public static MelonPreferences_Entry<bool> marder_rangefinder;
         public static MelonPreferences_Entry<bool> leopard_laser;
 
-        private GameObject[] vic_gos;
         private string[] invalid_scenes = new string[] { "MainMenu2_Scene", "LOADER_MENU", "LOADER_INITIAL", "t64_menu" };
 
         public override void OnInitializeMelon() {
@@ -47,17 +46,15 @@ namespace UnderdogsEnhanced
         public override async void OnSceneWasInitialized(int buildIndex, string sceneName)
         {
             if (invalid_scenes.Contains(sceneName)) return;
-            vic_gos = GameObject.FindGameObjectsWithTag("Vehicle");
 
-            while (vic_gos.Length == 0)
-            {
-                vic_gos = GameObject.FindGameObjectsWithTag("Vehicle");
-                await Task.Delay(1);
-            }
-
-            await Task.Delay(3000);
-
-            Vehicle[] all_vehicles = Object.FindObjectsOfType<Vehicle>();
+            Vehicle[] all_vehicles;
+            do {
+                await Task.Delay(500);
+                all_vehicles = Object.FindObjectsOfType<Vehicle>();
+            } while (!all_vehicles.Any(v => v != null && (
+                v.FriendlyName == "BMP-1" || v.FriendlyName == "BMP-1P" ||
+                v.FriendlyName == "BRDM-2" || v.FriendlyName.StartsWith("Marder") ||
+                v.FriendlyName.StartsWith("Leopard"))));
 
             if (DEBUG_MODE)
             {
