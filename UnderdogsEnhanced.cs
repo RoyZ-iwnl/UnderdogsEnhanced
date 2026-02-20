@@ -58,11 +58,13 @@ namespace UnderdogsEnhanced
 
             if (DEBUG_MODE)
             {
-                MelonLogger.Msg($"=== 搜索所有Vehicle组件 ===");
-                MelonLogger.Msg($"找到 {all_vehicles.Length} 个Vehicle组件");
+                MelonLogger.Msg($"=== 找到 {all_vehicles.Length} 个载具 ===");
                 foreach (Vehicle v in all_vehicles)
                 {
-                    MelonLogger.Msg($"载具: {v.FriendlyName} | 标签: {v.gameObject.tag} | 对象名: {v.gameObject.name}");
+                    MelonLogger.Msg($"[{v.FriendlyName}] tag={v.gameObject.tag} obj={v.gameObject.name}");
+                    AimablePlatform[] aps = v.AimablePlatforms;
+                    for (int i = 0; i < aps.Length; i++)
+                        MelonLogger.Msg($"  [{i}] {aps[i].name} | Stabilized={aps[i].Stabilized}");
                 }
             }
 
@@ -75,16 +77,6 @@ namespace UnderdogsEnhanced
                 if (stab_bmp.Value && (name == "BMP-1" || name == "BMP-1P"))
                 {
                     AimablePlatform[] aimables = vic.AimablePlatforms;
-
-                    if (DEBUG_MODE)
-                    {
-                        MelonLogger.Msg($"=== {name} 平台信息 ===");
-                        MelonLogger.Msg($"平台总数: {aimables.Length}");
-                        for (int i = 0; i < aimables.Length; i++)
-                        {
-                            MelonLogger.Msg($"索引 {i}: {aimables[i].name} | 已稳定: {aimables[i].Stabilized}");
-                        }
-                    }
 
                     FieldInfo stab_mode = typeof(AimablePlatform).GetField("_stabMode", BindingFlags.Instance | BindingFlags.NonPublic);
                     FieldInfo stab_active = typeof(AimablePlatform).GetField("_stabActive", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -124,16 +116,6 @@ namespace UnderdogsEnhanced
                 {
                     AimablePlatform[] aimables = vic.AimablePlatforms;
 
-                    if (DEBUG_MODE)
-                    {
-                        MelonLogger.Msg($"=== {name} 平台信息 ===");
-                        MelonLogger.Msg($"平台总数: {aimables.Length}");
-                        for (int i = 0; i < aimables.Length; i++)
-                        {
-                            MelonLogger.Msg($"索引 {i}: {aimables[i].name} | 已稳定: {aimables[i].Stabilized}");
-                        }
-                    }
-
                     FieldInfo stab_mode = typeof(AimablePlatform).GetField("_stabMode", BindingFlags.Instance | BindingFlags.NonPublic);
                     FieldInfo stab_active = typeof(AimablePlatform).GetField("_stabActive", BindingFlags.Instance | BindingFlags.NonPublic);
                     PropertyInfo stab_FCS_active = typeof(FireControlSystem).GetProperty("StabsActive", BindingFlags.Instance | BindingFlags.Public);
@@ -167,16 +149,6 @@ namespace UnderdogsEnhanced
                 if (stab_brdm.Value && name == "BRDM-2")
                 {
                     AimablePlatform[] aimables = vic.AimablePlatforms;
-
-                    if (DEBUG_MODE)
-                    {
-                        MelonLogger.Msg($"=== BRDM-2 平台信息 ===");
-                        MelonLogger.Msg($"平台总数: {aimables.Length}");
-                        for (int i = 0; i < aimables.Length; i++)
-                        {
-                            MelonLogger.Msg($"索引 {i}: {aimables[i].name} | 已稳定: {aimables[i].Stabilized}");
-                        }
-                    }
 
                     FieldInfo stab_mode = typeof(AimablePlatform).GetField("_stabMode", BindingFlags.Instance | BindingFlags.NonPublic);
                     FieldInfo stab_active = typeof(AimablePlatform).GetField("_stabActive", BindingFlags.Instance | BindingFlags.NonPublic);
