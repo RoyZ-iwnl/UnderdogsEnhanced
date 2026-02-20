@@ -7,8 +7,9 @@ using GHPC.Vehicle;
 using GHPC;
 using System.Reflection;
 using GHPC.Weapons;
+using GHPC.Camera;
 
-[assembly: MelonInfo(typeof(UnderdogsEnhancedMod), "Underdogs Enhanced", "1.0.0", "RoyZ;Based on ATLAS work")]
+[assembly: MelonInfo(typeof(UnderdogsEnhancedMod), "Underdogs Enhanced", "1.1.0", "RoyZ;Based on ATLAS work")]
 [assembly: MelonGame("Radian Simulations LLC", "GHPC")]
 
 namespace UnderdogsEnhanced
@@ -24,8 +25,17 @@ namespace UnderdogsEnhanced
         public static MelonPreferences_Entry<bool> stab_brdm;
         public static MelonPreferences_Entry<bool> marder_rangefinder;
         public static MelonPreferences_Entry<bool> leopard_laser;
+        public static MelonPreferences_Entry<bool> brdm_turret_speed;
+        public static MelonPreferences_Entry<bool> brdm_optics;
 
         private string[] invalid_scenes = new string[] { "MainMenu2_Scene", "LOADER_MENU", "LOADER_INITIAL", "t64_menu" };
+
+        private static string GetPath(Transform t, Transform root)
+        {
+            string path = t.name;
+            while (t.parent != null && t.parent != root) { t = t.parent; path = t.name + "/" + path; }
+            return path;
+        }
 
         public override void OnInitializeMelon() {
             cfg = MelonPreferences.CreateCategory("Underdogs-Enhanced");
@@ -35,6 +45,10 @@ namespace UnderdogsEnhanced
             stab_konkurs.Description = "Gives the Konkurs on the BMP-1P a stabilizer";
             stab_brdm = cfg.CreateEntry("BRDM-2 Stabilizer", true);
             stab_brdm.Description = "Gives BRDM-2 a stabilizer (default: enabled)";
+            brdm_turret_speed = cfg.CreateEntry("BRDM-2 Turret Speed", true);
+            brdm_turret_speed.Description = "Increases BRDM-2 turret traverse speed (default: enabled)";
+            brdm_optics = cfg.CreateEntry("BRDM-2 Optics", true);
+            brdm_optics.Description = "Adds zoom levels to BRDM-2 gunner sight (default: enabled)";
             stab_marder = cfg.CreateEntry("Marder Stabilizer", true);
             stab_marder.Description = "Gives Marder series a stabilizer (default: enabled)";
             marder_rangefinder = cfg.CreateEntry("Marder Rangefinder", true);
@@ -64,7 +78,9 @@ namespace UnderdogsEnhanced
                     MelonLogger.Msg($"[{v.FriendlyName}] tag={v.gameObject.tag} obj={v.gameObject.name}");
                     AimablePlatform[] aps = v.AimablePlatforms;
                     for (int i = 0; i < aps.Length; i++)
-                        MelonLogger.Msg($"  [{i}] {aps[i].name} | Stabilized={aps[i].Stabilized}");
+                        MelonLogger.Msg($"  [{i}] {aps[i].name} | 稳定器状态={aps[i].Stabilized}");
+                    foreach (var cs in v.gameObject.GetComponentsInChildren<CameraSlot>())
+                        MelonLogger.Msg($"  CameraSlot: {GetPath(cs.transform, v.transform)}");
                 }
             }
 
@@ -166,6 +182,21 @@ namespace UnderdogsEnhanced
                     aimables[1].Stabilized = true;
                     stab_active.SetValue(aimables[1], true);
                     stab_mode.SetValue(aimables[1], StabilizationMode.Vector);
+
+                    if (brdm_turret_speed.Value)
+                    {
+                        aimables[0].SpeedPowered = 60;
+                        aimables[0].SpeedUnpowered = 15;
+                        aimables[1].SpeedPowered = 60;
+                        aimables[1].SpeedUnpowered = 15;
+                    }
+
+                    if (brdm_optics.Value)
+                    {
+                        CameraSlot sight = vic.gameObject.transform.Find("BRDM2_rig/HULL/TURRET/GUN/---Gun Scripts/gunner sight").GetComponent<CameraSlot>();
+                        sight.DefaultFov = 16.5f;
+                        sight.OtherFovs = new float[] { 8f, 4f, 2f };
+                    }
                 }
 
                 if (leopard_laser.Value && (name == "Leopard 1A3" || name == "Leopard 1A3A1" || name == "Leopard 1A3A2" ||
