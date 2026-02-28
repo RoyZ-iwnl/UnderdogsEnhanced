@@ -32,7 +32,6 @@ Based on work by [ATLAS](https://github.com/thebeninator/Stabilized-BMP-1)
 | PT-76B | Gunner sight zoom levels | On |
 | T-64 series (NSVT) | NSVT cupola stabilizer | On |
 | T-64 series (NSVT) | Gunner sight zoom levels | On |
-| T-64 series (NSVT) | Laser rangefinder with auto-ranging | On |
 | T-54A | Laser rangefinder with auto-ranging | On |
 | T-34-85M | Stabilizer (slightly buggy) | Off |
 | T-34-85M | Gunner sight zoom levels | On |
