@@ -18,7 +18,7 @@ namespace UnderdogsEnhanced
 {
     public class UnderdogsEnhancedMod : MelonMod
     {
-        public static readonly bool DEBUG_MODE = false;
+        public static readonly bool DEBUG_MODE = true;
         public static readonly bool DEBUG_ARMOR = false;    // 装甲数据调试子开关，受 DEBUG_MODE 控制
         public static readonly bool DEBUG_CHILDREN = false; // 子节点结构调试子开关，受 DEBUG_MODE 控制
 
@@ -42,7 +42,6 @@ namespace UnderdogsEnhanced
         public static MelonPreferences_Entry<bool> pt76_optics;
         public static MelonPreferences_Entry<bool> stab_t64_nsvt;
         public static MelonPreferences_Entry<bool> t64_nsvt_optics;
-        public static MelonPreferences_Entry<bool> t64_nsvt_lrf;
         public static MelonPreferences_Entry<bool> t54a_lrf;
         public static MelonPreferences_Entry<bool> stab_t3485m;
         public static MelonPreferences_Entry<bool> t3485m_optics;
@@ -53,7 +52,6 @@ namespace UnderdogsEnhanced
         private static object reticle_cached_brdm = null;
         private static object reticle_cached_btr70 = null;
         private static object reticle_cached_pt76 = null;
-        private static object reticle_cached_t64_nsvt = null;
         private static object reticle_cached_t54a = null;
         private static object reticle_cached_t3485m = null;
 
@@ -114,8 +112,6 @@ namespace UnderdogsEnhanced
             t64_nsvt_optics.Description = "Adds zoom levels to T-64 series NSVT sight (default: enabled)";
             stab_t64_nsvt = cfg.CreateEntry("T-64 NSVT Stabilizer", true);
             stab_t64_nsvt.Description = "Stabilizes T-64 series NSVT cupola and MG platform (default: enabled)";
-            t64_nsvt_lrf = cfg.CreateEntry("T-64 NSVT Rangefinder", true);
-            t64_nsvt_lrf.Description = "Gives T-64 series NSVT a laser rangefinder (display only; default: enabled)";
             t54a_lrf = cfg.CreateEntry("T-54A Rangefinder", true);
             t54a_lrf.Description = "Gives T-54A a laser rangefinder with auto-ranging (default: enabled)";
             stab_t3485m = cfg.CreateEntry("T-34-85M Stabilizer", false);
@@ -696,18 +692,6 @@ namespace UnderdogsEnhanced
                         cws_sight.OtherFovs = new float[] { 25f, 12.5f, 6.25f };
                 }
 
-                if (t64_nsvt_lrf.Value && name.StartsWith("T-64") && name != "T-64R")
-                {
-                    var wm = vic.GetComponent<WeaponsManager>();
-                    var nsvt_info = wm?.Weapons[2];
-                    if (nsvt_info != null)
-                    {
-                        FireControlSystem fcs = nsvt_info.FCS;
-                        var cws_optic = vic.gameObject.transform.Find("---T64A_MESH---/HULL/TURRET/TC ring/TC AA sight/CWS gunsight")?.GetComponent<GHPC.Equipment.Optics.UsableOptic>();
-                        var cws_sight_node = vic.gameObject.transform.Find("---T64A_MESH---/HULL/TURRET/TC ring/TC AA sight/CWS gunsight");
-                        ApplyLimitedLRF(fcs, cws_optic, "PZU5", ref reticle_cached_t64_nsvt, cws_sight_node, new Vector2(46.8f, 259.4f));
-                    }
-                }
 
                 if (t54a_lrf.Value && name == "T-54A")
                 {
