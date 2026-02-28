@@ -28,6 +28,13 @@ Underdogs 只是个玩笑，别当真。
 | Leopard 1A3 / A3A1 / A3A2 / A3A3 / A1A1 / A1A2 / A1A3 / A1A4 | 激光测距仪替换光学测距仪（4000m） | 开启 |
 | PT-76B | 激光测距仪（含自动测距） | 开启 |
 | PT-76B | 炮手瞄准镜变焦档位 | 开启 |
+| T-64 系列（NSVT） | NSVT 高射机枪稳定器 | 开启 |
+| T-64 系列（NSVT） | 炮手瞄准镜变焦档位 | 开启 |
+| T-64 系列（NSVT） | 激光测距仪（含自动测距） | 开启 |
+| T-54A | 激光测距仪（含自动测距） | 开启 |
+| T-34-85M | 稳定器（略有 bug） | 关闭 |
+| T-34-85M | 炮手瞄准镜变焦档位 | 开启 |
+| T-34-85M | 激光测距仪（含自动测距） | 开启 |
 
 ## 安装
 
@@ -58,4 +65,11 @@ BTR-70 Rangefinder = true
 Leopard 1 Laser = true
 PT-76B Rangefinder = true
 PT-76B Optics = true
+T-64 NSVT Stabilizer = true
+T-64 NSVT Optics = true
+T-64 NSVT Rangefinder = true
+T-54A Rangefinder = true
+T-34-85M Stabilizer = false
+T-34-85M Optics = true
+T-34-85M Rangefinder = true
 ```

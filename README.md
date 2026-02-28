@@ -30,6 +30,13 @@ Based on work by [ATLAS](https://github.com/thebeninator/Stabilized-BMP-1)
 | Leopard 1A3 / A3A1 / A3A2 / A3A3 / A1A1 / A1A2 / A1A3 / A1A4 | Laser rangefinder replacing optical (4000m) | On |
 | PT-76B | Laser rangefinder with auto-ranging | On |
 | PT-76B | Gunner sight zoom levels | On |
+| T-64 series (NSVT) | NSVT cupola stabilizer | On |
+| T-64 series (NSVT) | Gunner sight zoom levels | On |
+| T-64 series (NSVT) | Laser rangefinder with auto-ranging | On |
+| T-54A | Laser rangefinder with auto-ranging | On |
+| T-34-85M | Stabilizer (slightly buggy) | Off |
+| T-34-85M | Gunner sight zoom levels | On |
+| T-34-85M | Laser rangefinder with auto-ranging | On |
 
 ## Installation
 
@@ -60,4 +67,11 @@ BTR-70 Rangefinder = true
 Leopard 1 Laser = true
 PT-76B Rangefinder = true
 PT-76B Optics = true
+T-64 NSVT Stabilizer = true
+T-64 NSVT Optics = true
+T-64 NSVT Rangefinder = true
+T-54A Rangefinder = true
+T-34-85M Stabilizer = false
+T-34-85M Optics = true
+T-34-85M Rangefinder = true
 ```
