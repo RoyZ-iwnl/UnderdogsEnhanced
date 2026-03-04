@@ -17,6 +17,7 @@ Underdogs 只是个玩笑，别当真。
 | BMP-1 / BMP-1G | 9M14TV Malyutka-TV 电视制导导弹（含热成像摄像机） | 开启 |
 | BMP-1P | Konkurs 反坦克导弹稳定器 | 关闭 |
 | Marder 1A2 / A1- / A1+ | 稳定器 | 开启 |
+| Marder 1A2 / A1+ | MILAN 导弹发射器稳定器 | 开启 |
 | Marder 1A2 / A1- / A1+ | 激光测距仪（4000m）+ 视差修正 | 开启 |
 | BRDM-2 | 稳定器 | 开启 |
 | BRDM-2 | 炮塔旋转速度提升 | 开启 |
@@ -58,6 +59,7 @@ BMP-1 MCLOS FLIR High Resolution = false
 BMP-1 MCLOS FLIR Remove Scanline = true
 BMP-1P Konkurs Stab = false
 Marder Stabilizer = true
+Marder MILAN Stabilizer = true
 Marder Rangefinder = true
 BRDM-2 Stabilizer = true
 BRDM-2 Turret Speed = true

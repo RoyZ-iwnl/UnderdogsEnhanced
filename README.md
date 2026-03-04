@@ -1,6 +1,6 @@
 # Underdogs Enhanced
 
-[中文版](README_zh.md)
+[中文版](README_CN.md)
 
 A [MelonLoader](https://melonwiki.xyz/) mod for **Gunner HEAT PC** that adds stabilizers and laser rangefinders to several vehicles.
 
@@ -19,6 +19,7 @@ Based on work by [ATLAS](https://github.com/thebeninator/Stabilized-BMP-1)
 | BMP-1 / BMP-1G | 9M14TV Malyutka-TV TV-guided missile with FLIR camera | On |
 | BMP-1P | Konkurs ATGM stabilizer | Off |
 | Marder 1A2 / A1- / A1+ | Vector stabilizer | On |
+| Marder 1A2 / A1+ | MILAN launcher stabilizer | On |
 | Marder 1A2 / A1- / A1+ | Laser rangefinder (4000m) + parallax fix | On |
 | BRDM-2 | Vector stabilizer | On |
 | BRDM-2 | Increased turret traverse speed | On |
@@ -60,6 +61,7 @@ BMP-1 MCLOS FLIR High Resolution = false
 BMP-1 MCLOS FLIR Remove Scanline = true
 BMP-1P Konkurs Stab = false
 Marder Stabilizer = true
+Marder MILAN Stabilizer = true
 Marder Rangefinder = true
 BRDM-2 Stabilizer = true
 BRDM-2 Turret Speed = true

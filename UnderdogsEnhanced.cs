@@ -15,7 +15,7 @@ using TMPro;
 using Reticle;
 using HarmonyLib;
 
-[assembly: MelonInfo(typeof(UnderdogsEnhancedMod), "Underdogs Enhanced", "1.3.0", "RoyZ;Based on ATLAS work")]
+[assembly: MelonInfo(typeof(UnderdogsEnhancedMod), "Underdogs Enhanced", "1.3.1", "RoyZ;Based on ATLAS work")]
 [assembly: MelonGame("Radian Simulations LLC", "GHPC")]
 
 namespace UnderdogsEnhanced
@@ -127,7 +127,7 @@ namespace UnderdogsEnhanced
             stab_marder = cfg.CreateEntry("Marder Stabilizer", true);
             stab_marder.Description = "Gives Marder series a stabilizer (default: enabled)";
             stab_marder_milan = cfg.CreateEntry("Marder MILAN Stabilizer", true);
-            stab_marder_milan.Description = "Stabilizes MILAN launcher on Marder A1+ (default: enabled)";
+            stab_marder_milan.Description = "Stabilizes MILAN launcher on Marder A1+ and Marder 1A2 (default: enabled)";
             marder_rangefinder = cfg.CreateEntry("Marder Rangefinder", true);
             marder_rangefinder.Description = "Gives Marder series laser rangefinder and parallax fix (default: enabled)";
             leopard_a1a4_laser = cfg.CreateEntry("Leopard A1A4 Laser", true);
@@ -867,7 +867,7 @@ namespace UnderdogsEnhanced
                     stab_active.SetValue(aimables[1], true);
                     stab_mode.SetValue(aimables[1], StabilizationMode.Vector);
 
-                    if (stab_marder_milan.Value && name == "Marder A1+")
+                    if (stab_marder_milan.Value && (name == "Marder A1+" || name == "Marder 1A2"))
                     {
                         WeaponSystemInfo milan_info = weapons_manager.Weapons[1];
                         stab_FCS_active.SetValue(milan_info.FCS, true);
