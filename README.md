@@ -16,6 +16,7 @@ Based on work by [ATLAS](https://github.com/thebeninator/Stabilized-BMP-1)
 |---|---|---|
 | BMP-1 / BMP-1P | Vector stabilizer (gun + turret) | On |
 | BMP-1 / BMP-1P | Laser rangefinder (display only, no auto-ranging) | On |
+| BMP-1 / BMP-1G | 9M14TV Malyutka-TV TV-guided missile with FLIR camera | On |
 | BMP-1P | Konkurs ATGM stabilizer | Off |
 | Marder 1A2 / A1- / A1+ | Vector stabilizer | On |
 | Marder 1A2 / A1- / A1+ | Laser rangefinder (4000m) + parallax fix | On |
@@ -27,7 +28,8 @@ Based on work by [ATLAS](https://github.com/thebeninator/Stabilized-BMP-1)
 | BTR-70 | Increased turret traverse speed | On |
 | BTR-70 | Gunner sight zoom levels | On |
 | BTR-70 | Laser rangefinder (display only, no auto-ranging) | On |
-| Leopard 1A3 / A3A1 / A3A2 / A3A3 / A1A1 / A1A2 / A1A3 / A1A4 | Laser rangefinder replacing optical (4000m) | On |
+| Leopard A1A4 | Laser rangefinder replacing optical (4000m) | On |
+| Leopard 1 series (all variants) | Laser rangefinder replacing optical (4000m) | Off |
 | PT-76B | Laser rangefinder with auto-ranging | On |
 | PT-76B | Gunner sight zoom levels | On |
 | T-64 series (NSVT) | NSVT cupola stabilizer | On |
@@ -52,6 +54,10 @@ After first launch, edit `UserData/MelonPreferences.cfg`:
 [Underdogs-Enhanced]
 BMP-1 Stabilizer = true
 BMP-1 Rangefinder = true
+BMP-1 9M14TV Malyutka-TV = true
+BMP-1 MCLOS Ready Missiles = -1
+BMP-1 MCLOS FLIR High Resolution = false
+BMP-1 MCLOS FLIR Remove Scanline = true
 BMP-1P Konkurs Stab = false
 Marder Stabilizer = true
 Marder Rangefinder = true
@@ -63,7 +69,8 @@ BTR-70 Stabilizer = true
 BTR-70 Turret Speed = true
 BTR-70 Optics = true
 BTR-70 Rangefinder = true
-Leopard 1 Laser = true
+Leopard A1A4 Laser = true
+Leopard All Laser = false
 PT-76B Rangefinder = true
 PT-76B Optics = true
 T-64 NSVT Stabilizer = true
