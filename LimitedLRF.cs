@@ -165,7 +165,7 @@ namespace UnderdogsEnhanced
 
         void Update()
         {
-            if (!UnderdogsEnhancedMod.DEBUG_MODE) return;
+            if (!UnderdogsDebug.DEBUG_MODE) return;
             if (canvas == null) return;
             var textObj = canvas.GetComponentInChildren<TextMeshProUGUI>();
             if (textObj == null) return;

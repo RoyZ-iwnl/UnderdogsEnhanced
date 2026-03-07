@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
@@ -64,6 +64,11 @@
       <HintPath>E:\SteamLibrary\steamapps\common\Gunner HEAT PC\Bin\GHPC_Data\Managed\UnityEngine.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="UnityEngine.AssetBundleModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>E:\SteamLibrary\steamapps\common\Gunner HEAT PC\Bin\GHPC_Data\Managed\UnityEngine.AssetBundleModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>E:\SteamLibrary\steamapps\common\Gunner HEAT PC\Bin\GHPC_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
       <Private>False</Private>
@@ -102,11 +107,16 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="UnderdogsDebug.cs" />
     <Compile Include="LimitedLRF.cs" />
     <Compile Include="UnderdogsEnhanced.cs" />
     <Compile Include="BMP1MissileCamera.cs" />
     <Compile Include="BMP1MCLOSAmmo.cs" />
-    <Compile Include="MissileDebugUI.cs" />
+    <Compile Include="AmmoDebugUI.cs" />
+    <Compile Include="Leopard1Ammo.cs" />
+    <Compile Include="EMES18Optic.cs" />
+    <Compile Include="EMES18DebugState.cs" />
+    <Compile Include="EMES18DebugUI.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

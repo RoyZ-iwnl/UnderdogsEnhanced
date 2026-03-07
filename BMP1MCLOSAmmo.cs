@@ -39,7 +39,8 @@ namespace UnderdogsEnhanced
             MISSILE_NAME
         };
 
-        static AmmoType ammo_9m14_mclos = null;
+        public static AmmoType ammo_9m14_mclos = null;
+        public static AmmoType ammo_9m14_original = null;
         static AmmoType.AmmoClip clip_9m14_mclos = null;
         static AmmoCodexScriptable ammo_codex_9m14_mclos = null;
         static MissileParamSnapshot originalParams;
@@ -327,7 +328,7 @@ namespace UnderdogsEnhanced
 
             if (ammo_9m14_mclos == null)
             {
-                if (UnderdogsEnhancedMod.DEBUG_MODE)
+                if (UnderdogsDebug.DEBUG_MODE)
                     MelonLogger.Warning("[BMP-1 MCLOS] 弹药初始化失败，跳过参数调整");
                 return;
             }
@@ -354,7 +355,7 @@ namespace UnderdogsEnhanced
                 }
                 else
                 {
-                    if (UnderdogsEnhancedMod.DEBUG_MODE)
+                    if (UnderdogsDebug.DEBUG_MODE)
                         MelonLogger.Warning("[BMP-1 MCLOS] StoredClips 属性未找到，回退到 Awake 模式");
                     rack.Awake();
                 }
@@ -369,7 +370,7 @@ namespace UnderdogsEnhanced
                 if (startMethod != null)
                     startMethod.Invoke(atgm_ws.Feed, null);
 
-                if (UnderdogsEnhancedMod.DEBUG_MODE)
+                if (UnderdogsDebug.DEBUG_MODE)
                     MelonLogger.Msg("[BMP-1 MCLOS] Apply 完成");
             }
             catch (System.Exception e)
@@ -391,11 +392,12 @@ namespace UnderdogsEnhanced
             }
 
             if (orig == null) return;
+            ammo_9m14_original = orig;
             originalParams = BuildSnapshot(orig);
             hasOriginalParams = true;
 
             // 打印原始参数值
-            if (UnderdogsEnhancedMod.DEBUG_MODE)
+            if (UnderdogsDebug.DEBUG_MODE)
             {
                 MelonLogger.Msg($"[BMP-1 MCLOS] 原始参数:");
                 MelonLogger.Msg($"  SpiralPower={orig.SpiralPower}, SpiralAngularRate={orig.SpiralAngularRate}");
@@ -450,7 +452,7 @@ namespace UnderdogsEnhanced
             clip_9m14_mclos.Name = MISSILE_NAME;
             clip_9m14_mclos.MinimalPattern = new AmmoCodexScriptable[] { ammo_codex_9m14_mclos };
 
-            if (UnderdogsEnhancedMod.DEBUG_MODE)
+            if (UnderdogsDebug.DEBUG_MODE)
                 MelonLogger.Msg($"[BMP-1 MCLOS] 导弹初始化完成: {MISSILE_NAME}");
         }
 

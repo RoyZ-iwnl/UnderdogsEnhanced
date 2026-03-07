@@ -10,26 +10,19 @@ using GHPC;
 using GHPC.State;
 using System.Reflection;
 using GHPC.Weapons;
+using GHPC.Weaponry;
 using GHPC.Camera;
 using TMPro;
 using Reticle;
 using HarmonyLib;
 
-[assembly: MelonInfo(typeof(UnderdogsEnhancedMod), "Underdogs Enhanced", "1.3.1", "RoyZ;Based on ATLAS work")]
+[assembly: MelonInfo(typeof(UnderdogsEnhancedMod), "Underdogs Enhanced", "1.4.0", "RoyZ;Based on ATLAS work")]
 [assembly: MelonGame("Radian Simulations LLC", "GHPC")]
 
 namespace UnderdogsEnhanced
 {
     public class UnderdogsEnhancedMod : MelonMod
     {
-        public static readonly bool DEBUG_MODE = false;
-        public static readonly bool DEBUG_TIMING = false;   // [UE] 时机日志，受 DEBUG_MODE 控制
-        public static readonly bool DEBUG_MCLOS = false;    // [BMP-1 MCLOS] 日志，受 DEBUG_MODE 控制
-        public static readonly bool DEBUG_LRF = false;      // LRF 改装日志，受 DEBUG_MODE 控制
-        public static readonly bool DEBUG_VEHICLE = false; // 车辆调试子开关，受 DEBUG_MODE 控制
-        public static readonly bool DEBUG_ARMOR = false;   // 装甲数据调试子开关，受 DEBUG_MODE 控制
-        public static readonly bool DEBUG_CHILDREN = false; // 子节点结构调试子开关，受 DEBUG_MODE 控制
-
         public static MelonPreferences_Category cfg;
         public static MelonPreferences_Entry<bool> stab_bmp;
         public static MelonPreferences_Entry<bool> stab_konkurs;
@@ -37,8 +30,6 @@ namespace UnderdogsEnhanced
         public static MelonPreferences_Entry<bool> stab_marder_milan;
         public static MelonPreferences_Entry<bool> stab_brdm;
         public static MelonPreferences_Entry<bool> marder_rangefinder;
-        public static MelonPreferences_Entry<bool> leopard_a1a4_laser;
-        public static MelonPreferences_Entry<bool> leopard_all_laser;
         public static MelonPreferences_Entry<bool> brdm_turret_speed;
         public static MelonPreferences_Entry<bool> brdm_optics;
         public static MelonPreferences_Entry<bool> brdm_lrf;
@@ -67,22 +58,91 @@ namespace UnderdogsEnhanced
         private static object reticle_cached_pt76 = null;
         private static object reticle_cached_t54a = null;
         private static object reticle_cached_t3485m = null;
+        private static readonly string[] leopard1_variants = new string[]
+        {
+            "Leopard A1A4",
+            "Leopard 1A3",
+            "Leopard 1A3A2",
+            "Leopard A1A1",
+            "Leopard A1A3",
+            "Leopard 1A3A1",
+            "Leopard 1A3A3",
+            "Leopard A1A2"
+        };
+        private static readonly HashSet<string> leopard1_b171_variants = new HashSet<string>(new string[]
+        {
+            "Leopard 1A3",
+            "Leopard 1A3A2",
+            "Leopard A1A1",
+            "Leopard A1A3"
+        }, System.StringComparer.OrdinalIgnoreCase);
+        private static readonly HashSet<string> leopard1_pzb200_variants = new HashSet<string>(new string[]
+        {
+            "Leopard 1A3A1",
+            "Leopard 1A3A3",
+            "Leopard A1A2",
+            "Leopard A1A4"
+        }, System.StringComparer.OrdinalIgnoreCase);
+        private static readonly Dictionary<string, MelonPreferences_Entry<bool>> leopard1_emes18_prefs = new Dictionary<string, MelonPreferences_Entry<bool>>(System.StringComparer.OrdinalIgnoreCase);
+        private static readonly Dictionary<string, MelonPreferences_Entry<bool>> leopard1_dm63_prefs = new Dictionary<string, MelonPreferences_Entry<bool>>(System.StringComparer.OrdinalIgnoreCase);
         private const string BMP1_DAY_OPTIC_PATH = "BMP1_rig/HULL/TURRET/GUN/Gun Scripts/gunner day sight/Optic";
         private static readonly FieldInfo f_uo_hasGuidance = typeof(GHPC.Equipment.Optics.UsableOptic).GetField("_hasGuidance", BindingFlags.Instance | BindingFlags.NonPublic);
         private static readonly PropertyInfo p_fcs_mainOptic = typeof(FireControlSystem).GetProperty("MainOptic", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         private static readonly FieldInfo f_fcs_mainOptic_backing = typeof(FireControlSystem).GetField("<MainOptic>k__BackingField", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         private static readonly FieldInfo f_fcs_authoritativeOptic = typeof(FireControlSystem).GetField("AuthoritativeOptic", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_fcs_fixParallaxForVectorMode = typeof(FireControlSystem).GetField("_fixParallaxForVectorMode", BindingFlags.Instance | BindingFlags.NonPublic);
 
         private static HashSet<int> _modifiedVehicleIds = new HashSet<int>();
+        private static HashSet<int> _leopard1AmmoApplied = new HashSet<int>();
+
+        private static void CreateLeopardVariantPreferences()
+        {
+            leopard1_emes18_prefs.Clear();
+            leopard1_dm63_prefs.Clear();
+
+            foreach (string variant in leopard1_variants)
+            {
+                var emesEntry = cfg.CreateEntry($"{variant} EMES18 Sight", true);
+                emesEntry.Description = $"Applies EMES18 FCS to {variant} (laser rangefinder + 3-12 FLIR optics + point-n-shoot; default: enabled)";
+                leopard1_emes18_prefs[variant] = emesEntry;
+
+                var dm63Entry = cfg.CreateEntry($"{variant} DM63 Ammo", true);
+                dm63Entry.Description = $"Replaces stock APFSDS with DM63 on {variant} (default: enabled)";
+                leopard1_dm63_prefs[variant] = dm63Entry;
+            }
+        }
+
+        private static bool IsSupportedLeopard1Variant(string vehicleName)
+        {
+            return leopard1_emes18_prefs.ContainsKey(vehicleName);
+        }
+
+        private static bool LeopardUsesB171(string vehicleName)
+        {
+            return leopard1_b171_variants.Contains(vehicleName);
+        }
+
+        private static bool LeopardUsesPzb200(string vehicleName)
+        {
+            return leopard1_pzb200_variants.Contains(vehicleName);
+        }
+
+        private static bool IsLeopardA1A4(string vehicleName)
+        {
+            return string.Equals(vehicleName, "Leopard A1A4", System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsLeopardEmes18Enabled(string vehicleName)
+        {
+            return leopard1_emes18_prefs.TryGetValue(vehicleName, out var entry) && entry != null && entry.Value;
+        }
+
+        private static bool IsLeopardDm63Enabled(string vehicleName)
+        {
+            return leopard1_dm63_prefs.TryGetValue(vehicleName, out var entry) && entry != null && entry.Value;
+        }
 
         private string[] invalid_scenes = new string[] { "MainMenu2_Scene", "MainMenu2-1_Scene", "LOADER_MENU", "LOADER_INITIAL", "t64_menu" };
-
-        private static string GetPath(Transform t, Transform root)
-        {
-            string path = t.name;
-            while (t.parent != null && t.parent != root) { t = t.parent; path = t.name + "/" + path; }
-            return path;
-        }
 
         private static void PrintChildren(Transform t, int depth = 0)
         {
@@ -103,11 +163,11 @@ namespace UnderdogsEnhanced
             bmp1_mclos = cfg.CreateEntry("BMP-1 9M14TV Malyutka-TV", true);
             bmp1_mclos.Description = "Adds the fictional 9M14TV Malyutka-TV TV-guided missile for the BMP-1 (default: enabled)";
             bmp1_mclos_ready_count = cfg.CreateEntry("BMP-1 MCLOS Ready Missiles", -1);
-            bmp1_mclos_ready_count.Description = "Ready rack missile count for BMP-1 MCLOS. -1 uses game's original count; >0 overrides.";
+            bmp1_mclos_ready_count.Description = "Ready rack missile count for BMP-1 MCLOS. -1 uses game's original count; >0 overrides.(max: 64)";
             bmp1_mclos_flir_high_res = cfg.CreateEntry("BMP-1 MCLOS FLIR High Resolution", false);
             bmp1_mclos_flir_high_res.Description = "Use 1024x576 FLIR resolution for BMP-1 MCLOS missile camera (default: low resolution)";
-            bmp1_mclos_flir_no_scanline = cfg.CreateEntry("BMP-1 MCLOS FLIR Remove Scanline", true);
-            bmp1_mclos_flir_no_scanline.Description = "Remove FLIR refresh scanline effect for BMP-1 MCLOS missile camera (default: enabled)";
+            bmp1_mclos_flir_no_scanline = cfg.CreateEntry("BMP-1 MCLOS FLIR Remove Scanline", false);
+            bmp1_mclos_flir_no_scanline.Description = "Remove FLIR refresh scanline effect for BMP-1 MCLOS missile camera (default: disabled)";
             stab_brdm = cfg.CreateEntry("BRDM-2 Stabilizer", true);
             stab_brdm.Description = "Gives BRDM-2 a stabilizer (default: enabled)";
             brdm_turret_speed = cfg.CreateEntry("BRDM-2 Turret Speed", true);
@@ -130,10 +190,7 @@ namespace UnderdogsEnhanced
             stab_marder_milan.Description = "Stabilizes MILAN launcher on Marder A1+ and Marder 1A2 (default: enabled)";
             marder_rangefinder = cfg.CreateEntry("Marder Rangefinder", true);
             marder_rangefinder.Description = "Gives Marder series laser rangefinder and parallax fix (default: enabled)";
-            leopard_a1a4_laser = cfg.CreateEntry("Leopard A1A4 Laser", true);
-            leopard_a1a4_laser.Description = "Replace optical rangefinder with laser on Leopard A1A4 only (default: enabled)";
-            leopard_all_laser = cfg.CreateEntry("Leopard All Laser", false);
-            leopard_all_laser.Description = "Replace optical rangefinder with laser on all Leopard 1 variants (default: disabled)";
+            CreateLeopardVariantPreferences();
             pt76_lrf = cfg.CreateEntry("PT-76B Rangefinder", true);
             pt76_lrf.Description = "Gives PT-76B a laser rangefinder with auto-ranging (default: enabled)";
             pt76_optics = cfg.CreateEntry("PT-76B Optics", true);
@@ -245,7 +302,7 @@ namespace UnderdogsEnhanced
         {
             if (fcs == null || dayOptic == null || dayOptic.reticleMesh == null)
             {
-                if (DEBUG_MODE && DEBUG_LRF)
+                if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_LRF)
                     MelonLogger.Warning($"[UE] RedDotLRF 跳过: FCS/Optic 未就绪 | FCS={(fcs != null)} Optic={(dayOptic != null)} Reticle={(dayOptic?.reticleMesh != null)}");
                 return;
             }
@@ -413,7 +470,7 @@ namespace UnderdogsEnhanced
             WeaponsManager wm_mclos = vic.GetComponent<WeaponsManager>();
             if (wm_mclos == null || wm_mclos.Weapons == null || wm_mclos.Weapons.Length < 2 || wm_mclos.Weapons[1]?.Weapon == null)
             {
-                if (logFailure && DEBUG_MODE && DEBUG_MCLOS)
+                if (logFailure && UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_MCLOS)
                     MelonLogger.Warning($"[BMP-1 MCLOS] 武器系统未就绪: {vic.FriendlyName}");
                 return false;
             }
@@ -421,7 +478,7 @@ namespace UnderdogsEnhanced
             WeaponSystem atgm_ws = wm_mclos.Weapons[1].Weapon;
             if (atgm_ws?.Feed?.ReadyRack?.ClipTypes == null || atgm_ws.Feed.ReadyRack.ClipTypes.Length == 0 || atgm_ws.Feed.ReadyRack.ClipTypes[0] == null)
             {
-                if (logFailure && DEBUG_MODE && DEBUG_MCLOS)
+                if (logFailure && UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_MCLOS)
                     MelonLogger.Warning($"[BMP-1 MCLOS] AmmoRack 未就绪，稍后重试: {vic.FriendlyName}");
                 return false;
             }
@@ -439,21 +496,19 @@ namespace UnderdogsEnhanced
                 mgu.AimElement = day_optic_t;
                 BMP1MissileCameraPatch.BMP1OpticNode = day_optic_t.gameObject;
             }
-            else if (logFailure && DEBUG_MODE && DEBUG_MCLOS)
+            else if (logFailure && UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_MCLOS)
             {
                 MelonLogger.Warning($"[BMP-1 MCLOS] 初始化失败: mgu={mgu != null} day_optic={day_optic_t != null}");
             }
 
-            if (DEBUG_MODE && DEBUG_MCLOS)
-                MelonLogger.Msg($"[BMP-1 MCLOS] 开始应用弹药: {vic.FriendlyName}");
+            UnderdogsDebug.LogMCLOS($"[BMP-1 MCLOS] 开始应用弹药: {vic.FriendlyName}");
 
             BMP1MCLOSAmmo.Apply(atgm_ws, vic);
 
-            if (DEBUG_MODE && DEBUG_MCLOS)
-                MelonLogger.Msg($"[BMP-1 MCLOS] Apply() 返回: {vic.FriendlyName}");
+            UnderdogsDebug.LogMCLOS($"[BMP-1 MCLOS] Apply() 返回: {vic.FriendlyName}");
 
             bool applied = IsMclosAmmoApplied(atgm_ws);
-            if (DEBUG_MODE && DEBUG_MCLOS && applied)
+            if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_MCLOS && applied)
                 MelonLogger.Msg($"[BMP-1 MCLOS] 弹药应用成功: {vic.FriendlyName}");
 
             return applied;
@@ -487,7 +542,7 @@ namespace UnderdogsEnhanced
 
                 if (foundTarget && allApplied)
                 {
-                    if (DEBUG_MODE && DEBUG_MCLOS)
+                    if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_MCLOS)
                         MelonLogger.Msg("[BMP-1 MCLOS] GameReady 阶段应用完成");
                     yield break;
                 }
@@ -495,7 +550,7 @@ namespace UnderdogsEnhanced
                 // 连续多次扫描都没发现 BMP-1/BMP-1G 则提前退出，避免无意义重试
                 if (!everFoundTarget && attempt >= 5)
                 {
-                    if (DEBUG_MODE && DEBUG_MCLOS)
+                    if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_MCLOS)
                         MelonLogger.Msg("[BMP-1 MCLOS] 场景中无 BMP-1/BMP-1G，跳过 MCLOS 改装");
                     yield break;
                 }
@@ -503,48 +558,25 @@ namespace UnderdogsEnhanced
                 yield return new WaitForSeconds(0.25f);
             }
 
-            if (DEBUG_MODE && DEBUG_MCLOS)
+            if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_MCLOS)
                 MelonLogger.Warning("[BMP-1 MCLOS] GameReady 重试结束，仍有载具未应用");
         }
 
         public override void OnUpdate()
         {
-            if (!DEBUG_MODE) return;
-            if (!Input.GetKeyDown(KeyCode.P)) return;
-
-            var cm = GHPC.Camera.CameraManager.Instance;
-            if (cm == null) { MelonLogger.Msg("[DEBUG-P] CameraManager 未找到"); return; }
-
-            MelonLogger.Msg("=== [DEBUG-P] 摄像机状态 ===");
-            MelonLogger.Msg($"  MainCam: {GHPC.Camera.CameraManager.MainCam?.name ?? "null"}");
-            MelonLogger.Msg($"  MainCam parent: {GHPC.Camera.CameraManager.MainCam?.transform.parent?.name ?? "null"}");
-            MelonLogger.Msg($"  ActiveInstance: {GHPC.Camera.CameraSlot.ActiveInstance?.name ?? "null"}");
-            MelonLogger.Msg($"  ExteriorMode: {cm.ExteriorMode}");
-            MelonLogger.Msg($"  CameraFollow suspended: {cm.CameraFollow == null}");
-
-            var allSlots = typeof(GHPC.Camera.CameraManager)
-                .GetField("_allCamSlots", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-                ?.GetValue(cm) as GHPC.Camera.CameraSlot[];
-            if (allSlots != null)
-            {
-                MelonLogger.Msg($"  已注册 CameraSlot 数量: {allSlots.Length}");
-                foreach (var s in allSlots)
-                    if (s != null)
-                        MelonLogger.Msg($"    [{(s.IsActive ? "*" : " ")}] {s.name} | IsExterior={s.IsExterior} Fov={s.DefaultFov} path={GetPath(s.transform, s.transform.root)}");
-            }
-
-            MelonLogger.Msg($"  BMP1OpticNode: {BMP1MissileCameraPatch.BMP1OpticNode?.name ?? "null"} active={BMP1MissileCameraPatch.BMP1OpticNode?.activeSelf}");
-
-            if (BMP1MissileCameraPatch.BMP1OpticNode != null)
-            {
-                MelonLogger.Msg("  Optic 子节点:");
-                PrintChildren(BMP1MissileCameraPatch.BMP1OpticNode.transform, 2);
-            }
+            UnderdogsDebug.HandleDebugKeys();
         }
 
         public override void OnSceneWasLoaded(int buildIndex, string sceneName)
         {
+            // Load static assets on menu scenes before checking invalid_scenes
+            if (sceneName == "MainMenu2_Scene" || sceneName == "MainMenu2-1_Scene" || sceneName == "t64_menu")
+            {
+                EMES18Optic.LoadStaticAssets();
+            }
+
             if (invalid_scenes.Contains(sceneName)) return;
+
             if (bmp1_mclos.Value)
                 StateController.RunOrDefer(GameState.GameReady, new GameStateEventHandler(EnsureBmp1MclosOnGameReady), GameStatePriority.Lowest);
         }
@@ -554,13 +586,12 @@ namespace UnderdogsEnhanced
             if (invalid_scenes.Contains(sceneName)) return;
 
             float _sceneStartTime = Time.realtimeSinceStartup;
-            if (DEBUG_MODE && DEBUG_TIMING)
-                MelonLogger.Msg($"[UE] >>> OnSceneWasInitialized | 场景={sceneName} | 时间={System.DateTime.Now:HH:mm:ss.fff}");
+            UnderdogsDebug.LogTiming($"[UE] >>> OnSceneWasInitialized | 场景={sceneName} | 时间={System.DateTime.Now:HH:mm:ss.fff}");
 
-            if (DEBUG_MODE)
+            if (UnderdogsDebug.DEBUG_MODE)
             {
                 // 初始化调试UI（运行时开关，不依赖编译配置）
-                MissileDebugUI.Init();
+                AmmoDebugUI.Init();
             }
 
             Vehicle[] all_vehicles = new Vehicle[0];
@@ -570,7 +601,7 @@ namespace UnderdogsEnhanced
                 await Task.Delay(500);
                 _waitCount++;
                 all_vehicles = Object.FindObjectsOfType<Vehicle>();
-                if (DEBUG_MODE && DEBUG_TIMING && _waitCount % 4 == 0)
+                if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_TIMING && _waitCount % 4 == 0)
                     MelonLogger.Msg($"[UE] 等待载具中... {_waitCount * 500}ms | 当前={all_vehicles?.Length ?? 0}个");
             } while (_waitCount < _maxWaitAttempts && (all_vehicles == null || all_vehicles.Length == 0 || !all_vehicles.Any(v => v != null && (
                 v.FriendlyName == "BMP-1" || v.FriendlyName == "BMP-1P" ||
@@ -580,20 +611,19 @@ namespace UnderdogsEnhanced
 
             if (all_vehicles == null || all_vehicles.Length == 0)
             {
-                if (DEBUG_MODE && DEBUG_TIMING)
+                if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_TIMING)
                     MelonLogger.Warning("[UE] 30秒内未检测到任何 Vehicle，跳过本次场景改装");
                 return;
             }
 
-            if (DEBUG_MODE && DEBUG_TIMING)
-                MelonLogger.Msg($"[UE] 等待 {_waitCount * 500}ms 后发现 {all_vehicles.Length} 个载具 | 距场景加载 {Time.realtimeSinceStartup - _sceneStartTime:F3}s");
+            UnderdogsDebug.LogTiming($"[UE] 等待 {_waitCount * 500}ms 后发现 {all_vehicles.Length} 个载具 | 距场景加载 {Time.realtimeSinceStartup - _sceneStartTime:F3}s");
 
 
 
 
-            if (DEBUG_MODE)
+            if (UnderdogsDebug.DEBUG_MODE)
             {
-                if (DEBUG_VEHICLE)
+                if (UnderdogsDebug.DEBUG_VEHICLE)
                 {
                     var _cr = typeof(ReticleMesh).GetField("cachedReticles", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(null) as System.Collections.IDictionary;
                     MelonLogger.Msg($"=== 找到 {all_vehicles.Length} 个载具 ===");
@@ -606,12 +636,12 @@ namespace UnderdogsEnhanced
                         for (int i = 0; i < aps.Length; i++)
                             MelonLogger.Msg($"  [{i}] {aps[i].name} | Stabilized={aps[i].Stabilized} _stabActive={f_stabActive?.GetValue(aps[i])} _stabMode={f_stabMode?.GetValue(aps[i])}");
                         foreach (var cs in v.gameObject.GetComponentsInChildren<CameraSlot>())
-                            MelonLogger.Msg($"  CameraSlot: {GetPath(cs.transform, v.transform)} | DefaultFov={cs.DefaultFov} OtherFovs=[{string.Join(", ", cs.OtherFovs ?? new float[0])}]");
+                            MelonLogger.Msg($"  CameraSlot: {UnderdogsDebug.GetPath(cs.transform, v.transform)} | DefaultFov={cs.DefaultFov} OtherFovs=[{string.Join(", ", cs.OtherFovs ?? new float[0])}]");
                         foreach (var uo in v.GetComponentsInChildren<GHPC.Equipment.Optics.UsableOptic>(true))
                         {
                             var f_hasGuidance = typeof(GHPC.Equipment.Optics.UsableOptic).GetField("_hasGuidance", BindingFlags.Instance | BindingFlags.NonPublic);
                             bool hasGuidance = f_hasGuidance != null && (bool)f_hasGuidance.GetValue(uo);
-                            MelonLogger.Msg($"  UsableOptic: {GetPath(uo.transform, v.transform)} | GuidanceLight={uo.GuidanceLight} _hasGuidance={hasGuidance} FCS={uo.FCS?.name ?? "null"}");
+                            MelonLogger.Msg($"  UsableOptic: {UnderdogsDebug.GetPath(uo.transform, v.transform)} | GuidanceLight={uo.GuidanceLight} _hasGuidance={hasGuidance} FCS={uo.FCS?.name ?? "null"}");
                             if (uo.reticleMesh != null)
                             {
                                 string soName = uo.reticleMesh.reticleSO?.name ?? "null";
@@ -632,8 +662,8 @@ namespace UnderdogsEnhanced
                                 var wsi = wm.Weapons[wi];
                                 var fcs = wsi.FCS;
                                 if (fcs == null) continue;
-                                MelonLogger.Msg($"  [武器{wi}] {wsi.Name} | FCS: {GetPath(fcs.transform, v.transform)}");
-                                MelonLogger.Msg($"    LaserOrigin: {(fcs.LaserOrigin != null ? GetPath(fcs.LaserOrigin, v.transform) : "null")}");
+                                MelonLogger.Msg($"  [武器{wi}] {wsi.Name} | FCS: {UnderdogsDebug.GetPath(fcs.transform, v.transform)}");
+                                MelonLogger.Msg($"    LaserOrigin: {(fcs.LaserOrigin != null ? UnderdogsDebug.GetPath(fcs.LaserOrigin, v.transform) : "null")}");
                                 MelonLogger.Msg($"    LaserAim: {fcs.LaserAim} MaxLaserRange: {fcs.MaxLaserRange} DefaultRange: {fcs.DefaultRange}");
                                 MelonLogger.Msg($"    StabsActive={fcs.StabsActive} CurrentStabMode={fcs.CurrentStabMode} SuperelevateWeapon: {fcs.SuperelevateWeapon} SuperleadWeapon: {fcs.SuperleadWeapon}");
 
@@ -648,7 +678,7 @@ namespace UnderdogsEnhanced
                                     var gu = ws.GuidanceUnit;
                                     if (gu != null)
                                     {
-                                        MelonLogger.Msg($"    GuidanceUnit: path={GetPath(gu.transform, v.transform)}");
+                                        MelonLogger.Msg($"    GuidanceUnit: path={UnderdogsDebug.GetPath(gu.transform, v.transform)}");
                                         MelonLogger.Msg($"    GuidanceUnit: IsGuidingMissile={gu.IsGuidingMissile} Damaged={gu.Damaged} RangeSetting={gu.RangeSetting}");
                                         MelonLogger.Msg($"    GuidanceUnit: AimElement={gu.AimElement?.name ?? "null"} ResetAimOnLaunch={gu.ResetAimOnLaunch}");
                                         MelonLogger.Msg($"    GuidanceUnit: ManualAimAngularVelocity={gu.ManualAimAngularVelocity}");
@@ -682,8 +712,12 @@ namespace UnderdogsEnhanced
                                                     var ammo = ci == 0 ? (breechAmmo ?? ammoFromClip) : ammoFromClip;
                                                     if (ammo != null)
                                                     {
+                                                        MelonLogger.Msg($"        AmmoCodex={clip?.MinimalPattern?[0]?.name ?? "null"}");
+                                                        MelonLogger.Msg($"        Caliber={ammo.Caliber} Category={ammo.Category}");
+                                                        MelonLogger.Msg($"        RhaPen={ammo.RhaPenetration} MuzzleVel={ammo.MuzzleVelocity} Mass={ammo.Mass}");
+                                                        MelonLogger.Msg($"        TntKg={ammo.TntEquivalentKg} Spall={ammo.SpallMultiplier}");
                                                         MelonLogger.Msg($"        Guidance={ammo.Guidance} Flight={ammo.Flight}");
-                                                        MelonLogger.Msg($"        MuzzleVelocity={ammo.MuzzleVelocity} TurnSpeed={ammo.TurnSpeed} Mass={ammo.Mass}");
+                                                        MelonLogger.Msg($"        TurnSpeed={ammo.TurnSpeed}");
                                                         MelonLogger.Msg($"        GuidanceLockoutTime={ammo.GuidanceLockoutTime} GuidanceNoLockoutRange={ammo.GuidanceNoLockoutRange}");
                                                         MelonLogger.Msg($"        GuidanceLeadDistance={ammo.GuidanceLeadDistance} GuidanceNoLoiterRange={ammo.GuidanceNoLoiterRange}");
                                                         MelonLogger.Msg($"        ClimbAngle={ammo.ClimbAngle} DiveAngle={ammo.DiveAngle} LoiterAltitude={ammo.LoiterAltitude}");
@@ -695,10 +729,39 @@ namespace UnderdogsEnhanced
                                 }
                             }
                         }
+
+                        // LoadoutManager 信息
+                        var lm = v.GetComponent<LoadoutManager>();
+                        if (lm != null)
+                        {
+                            var f_totalAmmoCount = typeof(LoadoutManager).GetField("_totalAmmoCount", BindingFlags.Instance | BindingFlags.NonPublic);
+                            int totalCount = f_totalAmmoCount != null ? (int)f_totalAmmoCount.GetValue(lm) : -1;
+                            MelonLogger.Msg($"  LoadoutManager: _totalAmmoCount={totalCount}");
+                            if (lm.TotalAmmoCounts != null)
+                                MelonLogger.Msg($"    TotalAmmoCounts=[{string.Join(", ", lm.TotalAmmoCounts)}]");
+                            if (lm.LoadedAmmoList?.AmmoClips != null)
+                            {
+                                MelonLogger.Msg($"    LoadedAmmoList.AmmoClips.Length={lm.LoadedAmmoList.AmmoClips.Length}");
+                                for (int i = 0; i < lm.LoadedAmmoList.AmmoClips.Length; i++)
+                                {
+                                    var clipCodex = lm.LoadedAmmoList.AmmoClips[i];
+                                    MelonLogger.Msg($"      [{i}] {clipCodex?.name ?? "null"} -> {clipCodex?.ClipType?.Name ?? "null"}");
+                                }
+                            }
+                            if (lm.RackLoadouts != null)
+                            {
+                                MelonLogger.Msg($"    RackLoadouts.Length={lm.RackLoadouts.Length}");
+                                for (int i = 0; i < lm.RackLoadouts.Length; i++)
+                                {
+                                    var rl = lm.RackLoadouts[i];
+                                    MelonLogger.Msg($"      Rack[{i}]: Capacity={rl.Rack?.ClipCapacity ?? -1}");
+                                }
+                            }
+                        }
                     }
                 }
 
-                if (DEBUG_CHILDREN)
+                if (UnderdogsDebug.DEBUG_CHILDREN)
                 {
                     MelonLogger.Msg($"=== 子节点结构 ===");
                     foreach (Vehicle v in all_vehicles)
@@ -709,7 +772,7 @@ namespace UnderdogsEnhanced
                     }
                 }
 
-                if (DEBUG_ARMOR)
+                if (UnderdogsDebug.DEBUG_ARMOR)
                 {
                     MelonLogger.Msg("=== 装甲数据 ===");
                     var f_avgRha = typeof(VariableArmor).GetField("AverageRha", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -743,16 +806,17 @@ namespace UnderdogsEnhanced
             {
                 if (_uePass > 1)
                 {
-                    if (DEBUG_MODE && DEBUG_TIMING)
+                    if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_TIMING)
                         MelonLogger.Msg($"[UE] 试车场第{_uePass}轮: 等待3秒后重新扫描载具...");
+
                     await Task.Delay(3000);
                     all_vehicles = Object.FindObjectsOfType<Vehicle>();
-                    if (DEBUG_MODE && DEBUG_TIMING)
+                    if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_TIMING)
                         MelonLogger.Msg($"[UE] 第{_uePass}轮扫描到 {all_vehicles.Length} 个载具");
                 }
 
                 float _passStart = Time.realtimeSinceStartup;
-                if (DEBUG_MODE && DEBUG_TIMING)
+                if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_TIMING)
                     MelonLogger.Msg($"[UE] === 第{_uePass}/{_uePassCount}轮改装开始 | 场景={sceneName} | 载具数={all_vehicles.Length} | {System.DateTime.Now:HH:mm:ss.fff} ===");
 
                 foreach (Vehicle vic in all_vehicles)
@@ -763,15 +827,17 @@ namespace UnderdogsEnhanced
                     _modifiedVehicleIds.Add(_vid);
 
                     string name = vic.FriendlyName;
-                    if (DEBUG_MODE && DEBUG_TIMING)
-                        MelonLogger.Msg($"[UE] 第{_uePass}轮 >> [{name}] ID={_vid} obj={vic.gameObject.name}");
+                    bool dumpA1A3 = UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_VEHICLE && name == "Leopard A1A3";
+                    if (dumpA1A3)
+                        UnderdogsDebug.DumpVehicleOpticsSnapshot(vic, "PRE", detailedOptics: true);
+                    UnderdogsDebug.LogTiming($"[UE] 第{_uePass}轮 >> [{name}] ID={_vid} obj={vic.gameObject.name}");
 
                     try
                     {
 
                 if ((stab_bmp.Value || bmp_lrf.Value) && (name == "BMP-1" || name == "BMP-1P"))
                 {
-                    if (DEBUG_MODE && DEBUG_TIMING) MelonLogger.Msg($"[UE]   > 匹配 BMP-1 改装 (stab={stab_bmp.Value} lrf={bmp_lrf.Value})");
+                    UnderdogsDebug.LogTiming($"[UE]   > 匹配 BMP-1 改装 (stab={stab_bmp.Value} lrf={bmp_lrf.Value})");
                     WeaponsManager weapons_manager = vic.GetComponent<WeaponsManager>();
                     WeaponSystemInfo main_gun_info = weapons_manager.Weapons[0];
 
@@ -814,11 +880,11 @@ namespace UnderdogsEnhanced
                         FireControlSystem fcs = main_gun_info.FCS;
                         var day_optic = vic.gameObject.transform.Find("BMP1_rig/HULL/TURRET/GUN/Gun Scripts/gunner day sight/Optic").GetComponent<GHPC.Equipment.Optics.UsableOptic>();
 
-                        if (DEBUG_MODE && DEBUG_LRF)
+                        if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_LRF)
                         {
                             MelonLogger.Msg($"=== {name} LRF改装 ===");
-                            MelonLogger.Msg($"FCS path={GetPath(fcs.transform, vic.transform)}");
-                            MelonLogger.Msg($"LaserOrigin: {(fcs?.LaserOrigin != null ? GetPath(fcs.LaserOrigin, vic.transform) : "null，将自动创建")}");
+                            MelonLogger.Msg($"FCS path={UnderdogsDebug.GetPath(fcs.transform, vic.transform)}");
+                            MelonLogger.Msg($"LaserOrigin: {(fcs?.LaserOrigin != null ? UnderdogsDebug.GetPath(fcs.LaserOrigin, vic.transform) : "null，将自动创建")}");
                             MelonLogger.Msg($"UsableOptic: {day_optic?.name ?? "null"}");
                             if (day_optic?.reticleMesh?.reticleSO != null)
                                 MelonLogger.Msg($"reticle planes[0] element count={day_optic.reticleMesh.reticleSO.planes[0].elements.Count}");
@@ -827,7 +893,7 @@ namespace UnderdogsEnhanced
                         var gun = vic.gameObject.transform.Find("BMP1_rig/HULL/TURRET/GUN");
                         ApplyLimitedLRF(fcs, day_optic, "BMP-1", ref reticle_cached_bmp, gun, new Vector2(46.8f, 469.4f));
 
-                        if (DEBUG_MODE && DEBUG_LRF)
+                        if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_LRF)
                             MelonLogger.Msg($"{name} LRF完成 | LaserOrigin={fcs.LaserOrigin.name} MaxRange={fcs.MaxLaserRange}");
                     }
 
@@ -835,7 +901,7 @@ namespace UnderdogsEnhanced
 
                 if (stab_marder.Value && (name == "Marder 1A2" || name == "Marder A1-" || name == "Marder A1+"))
                 {
-                    if (DEBUG_MODE && DEBUG_TIMING) MelonLogger.Msg($"[UE]   > 匹配 Marder 改装");
+                    UnderdogsDebug.LogTiming($"[UE]   > 匹配 Marder 改装");
                     AimablePlatform[] aimables = vic.AimablePlatforms;
 
                     FieldInfo stab_mode = typeof(AimablePlatform).GetField("_stabMode", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -883,40 +949,111 @@ namespace UnderdogsEnhanced
                     }
                 }
 
-                bool isA1A4 = name == "Leopard A1A4";
-                bool isOtherLeopard = name == "Leopard 1A3" || name == "Leopard 1A3A1" || name == "Leopard 1A3A2" ||
-                    name == "Leopard 1A3A3" || name == "Leopard A1A1" || name == "Leopard A1A2" || name == "Leopard A1A3";
+                bool isSupportedLeopard = IsSupportedLeopard1Variant(name);
+                bool isA1A4 = IsLeopardA1A4(name);
+                bool leopardUsesB171 = LeopardUsesB171(name);
+                bool leopardUsesPzb200 = LeopardUsesPzb200(name);
+                bool leopardEmes18Enabled = isSupportedLeopard && IsLeopardEmes18Enabled(name);
+                bool leopardDm63Enabled = isSupportedLeopard && IsLeopardDm63Enabled(name);
 
-                if ((leopard_a1a4_laser.Value && isA1A4) || (leopard_all_laser.Value && (isA1A4 || isOtherLeopard)))
+                // 应用DM63弹药到所有豹1
+                if (isSupportedLeopard && leopardDm63Enabled)
                 {
-                    if (DEBUG_MODE && DEBUG_TIMING) MelonLogger.Msg($"[UE]   > 匹配 Leopard 激光测距改装");
+                    int vicId = vic.GetInstanceID();
+                    if (_leopard1AmmoApplied.Contains(vicId))
+                    {
+                        UnderdogsDebug.LogTiming($"[Leopard1] {name} 已应用过DM63，跳过");
+                    }
+                    else
+                    {
+                        if (UnderdogsDebug.DEBUG_MODE) MelonLogger.Msg($"[Leopard1] 检测到 {name}，准备应用DM63");
+
+                        LoadoutManager loadout_manager = vic.GetComponent<LoadoutManager>();
+                        if (loadout_manager?.LoadedAmmoList?.AmmoClips != null)
+                        {
+                            if (UnderdogsDebug.DEBUG_MODE) MelonLogger.Msg($"[Leopard1] LoadoutManager弹药数={loadout_manager.LoadedAmmoList.AmmoClips.Length}");
+
+                            // 从LoadoutManager查找APFSDS
+                            for (int i = 0; i < loadout_manager.LoadedAmmoList.AmmoClips.Length; i++)
+                            {
+                                var clipCodex = loadout_manager.LoadedAmmoList.AmmoClips[i];
+                                var ammo = clipCodex?.ClipType?.MinimalPattern?[0]?.AmmoType;
+                                if (ammo != null && (ammo.Name.Contains("DM23") || ammo.Name.Contains("DM13")))
+                                {
+                                    if (UnderdogsDebug.DEBUG_MODE) MelonLogger.Msg($"[Leopard1] 找到APFSDS: {ammo.Name} at index {i}");
+
+                                    // 每次都重新初始化，因为不同豹1变种可能用不同基础弹药
+                                    Leopard1Ammo.Init(ammo);
+                                    if (UnderdogsDebug.DEBUG_MODE) MelonLogger.Msg($"[Leopard1] DM63初始化: {ammo.Name} -> DM63");
+
+                                    if (Leopard1Ammo.clip_dm63 != null)
+                                    {
+                                        // 创建新的ClipCodex并替换
+                                        var new_clip_codex = ScriptableObject.CreateInstance<AmmoClipCodexScriptable>();
+                                        new_clip_codex.name = "clip_dm63";
+                                        new_clip_codex.ClipType = Leopard1Ammo.clip_dm63;
+                                        loadout_manager.LoadedAmmoList.AmmoClips[i] = new_clip_codex;
+
+                                        _leopard1AmmoApplied.Add(vicId);
+                                        if (UnderdogsDebug.DEBUG_MODE) MelonLogger.Msg($"[Leopard1] {name} DM63已应用");
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (isSupportedLeopard && leopardEmes18Enabled)
+                {
+                    UnderdogsDebug.LogTiming($"[UE]   > 匹配 Leopard 激光测距改装");
                     WeaponsManager weapons_manager = vic.GetComponent<WeaponsManager>();
                     WeaponSystemInfo main_gun_info = weapons_manager.Weapons[0];
                     FireControlSystem fcs = main_gun_info.FCS;
 
-                    if (DEBUG_MODE && DEBUG_LRF)
+                    // Apply EMES18 suite to Leopard 1 optics
+                    if (isSupportedLeopard)
                     {
-                        MelonLogger.Msg($"=== {name} 激光测距改装 ===");
-                        MelonLogger.Msg($"原测距仪: {(fcs.OpticalRangefinder != null ? "存在" : "不存在")}");
-                    }
+                        if (UnderdogsDebug.DEBUG_MODE) MelonLogger.Msg($"[UE] Applying Leopard EMES18 suite to {name}");
 
-                    if (fcs.OpticalRangefinder != null)
-                    {
-                        GameObject.Destroy(fcs.OpticalRangefinder);
-                    }
+                        GHPC.Equipment.Optics.UsableOptic gps_day =
+                            vic.gameObject.transform.Find("LEO1A1A1_rig/HULL/TURRET/--Turret Scripts--/Sights/GPS")
+                            ?.GetComponent<GHPC.Equipment.Optics.UsableOptic>();
+                        if (gps_day == null)
+                            gps_day = vic.GetComponentsInChildren<GHPC.Equipment.Optics.UsableOptic>(true)
+                                .FirstOrDefault(o => o != null && o.name.Equals("GPS", System.StringComparison.OrdinalIgnoreCase));
 
-                    fcs.LaserAim = LaserAimMode.ImpactPoint;
-                    fcs.MaxLaserRange = 4000f;
+                        string fallbackNightOpticName = isA1A4 || leopardUsesPzb200 ? "PZB-200" : "B 171";
+                        string fallbackNightOpticPath = isA1A4 || leopardUsesPzb200
+                            ? "LEO1A1A1_rig/HULL/TURRET/Mantlet/--Gun Scripts--/PZB-200"
+                            : "LEO1A1A1_rig/HULL/TURRET/--Turret Scripts--/Sights/B 171";
 
-                    if (DEBUG_MODE && DEBUG_LRF)
-                    {
-                        MelonLogger.Msg($"激光测距已启用 | 最大距离: {fcs.MaxLaserRange}m");
+                        GHPC.Equipment.Optics.UsableOptic linked_night_optic = null;
+                        try { linked_night_optic = gps_day?.slot?.LinkedNightSight?.PairedOptic; } catch { }
+                        if (linked_night_optic == null)
+                            linked_night_optic = vic.gameObject.transform.Find(fallbackNightOpticPath)
+                                ?.GetComponent<GHPC.Equipment.Optics.UsableOptic>();
+                        if (linked_night_optic == null)
+                            linked_night_optic = vic.GetComponentsInChildren<GHPC.Equipment.Optics.UsableOptic>(true)
+                                .FirstOrDefault(o => o != null && o.name.Equals(fallbackNightOpticName, System.StringComparison.OrdinalIgnoreCase));
+
+                        if (gps_day != null && linked_night_optic != null)
+                        {
+                            gps_day.enabled = true;
+                            linked_night_optic.enabled = true;
+                            EMES18Optic.ApplyLeopardEmes18Suite(gps_day, linked_night_optic, fcs, name);
+                            if (UnderdogsDebug.DEBUG_MODE) MelonLogger.Msg($"[UE] Leopard EMES18 suite applied ({fallbackNightOpticName} + GPS)");
+                        }
+                        else if (UnderdogsDebug.DEBUG_MODE)
+                        {
+                            MelonLogger.Warning($"[UE] Leopard optics missing | veh={name} GPS={(gps_day != null)} Night={(linked_night_optic != null)} expected={fallbackNightOpticName}");
+                        }
                     }
                 }
 
                 if ((stab_brdm.Value || brdm_lrf.Value) && name == "BRDM-2")
                 {
-                    if (DEBUG_MODE && DEBUG_TIMING) MelonLogger.Msg($"[UE]   > 匹配 BRDM-2 改装 (stab={stab_brdm.Value} lrf={brdm_lrf.Value})");
+                    UnderdogsDebug.LogTiming($"[UE]   > 匹配 BRDM-2 改装 (stab={stab_brdm.Value} lrf={brdm_lrf.Value})");
                     WeaponsManager weapons_manager = vic.GetComponent<WeaponsManager>();
                     WeaponSystemInfo main_gun_info = weapons_manager.Weapons[0];
 
@@ -959,7 +1096,7 @@ namespace UnderdogsEnhanced
                         FireControlSystem fcs = main_gun_info.FCS;
                         var day_optic = vic.gameObject.transform.Find("BRDM2_rig/HULL/TURRET/GUN/---Gun Scripts/gunner sight/GPS").GetComponent<GHPC.Equipment.Optics.UsableOptic>();
 
-                        if (DEBUG_MODE && DEBUG_LRF)
+                        if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_LRF)
                         {
                             MelonLogger.Msg($"=== BRDM-2 LRF改装 ===");
                             MelonLogger.Msg($"FCS: {fcs?.name ?? "null"}");
@@ -970,14 +1107,14 @@ namespace UnderdogsEnhanced
                         var brdm_gun = vic.gameObject.transform.Find("BRDM2_rig/HULL/TURRET/GUN");
                         ApplyLimitedLRF(fcs, day_optic, "BRDM2", ref reticle_cached_brdm, brdm_gun, new Vector2(31.8f, 319.4f));
 
-                        if (DEBUG_MODE && DEBUG_LRF)
+                        if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_LRF)
                             MelonLogger.Msg($"BRDM-2 LRF完成 | LaserOrigin={fcs.LaserOrigin.name} MaxRange={fcs.MaxLaserRange}");
                     }
                 }
 
                 if ((stab_btr70.Value || btr70_lrf.Value) && name == "BTR-70")
                 {
-                    if (DEBUG_MODE && DEBUG_TIMING) MelonLogger.Msg($"[UE]   > 匹配 BTR-70 改装 (stab={stab_btr70.Value} lrf={btr70_lrf.Value})");
+                    UnderdogsDebug.LogTiming($"[UE]   > 匹配 BTR-70 改装 (stab={stab_btr70.Value} lrf={btr70_lrf.Value})");
                     WeaponsManager weapons_manager = vic.GetComponent<WeaponsManager>();
                     WeaponSystemInfo main_gun_info = weapons_manager.Weapons[0];
 
@@ -1020,7 +1157,7 @@ namespace UnderdogsEnhanced
                         FireControlSystem fcs = main_gun_info.FCS;
                         var day_optic = vic.gameObject.transform.Find("BTR70_rig/HULL/TURRET/GUN/Gun Aimable/gunner sight/GPS").GetComponent<GHPC.Equipment.Optics.UsableOptic>();
 
-                        if (DEBUG_MODE && DEBUG_LRF)
+                        if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_LRF)
                         {
                             MelonLogger.Msg($"=== BTR-70 LRF改装 ===");
                             MelonLogger.Msg($"FCS: {fcs?.name ?? "null"}");
@@ -1031,14 +1168,14 @@ namespace UnderdogsEnhanced
                         var btr70_gun = vic.gameObject.transform.Find("BTR70_rig/HULL/TURRET/GUN/Gun Aimable");
                         ApplyLimitedLRF(fcs, day_optic, "BRDM2", ref reticle_cached_btr70, btr70_gun, new Vector2(31.8f, 319.4f));
 
-                        if (DEBUG_MODE && DEBUG_LRF)
+                        if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_LRF)
                             MelonLogger.Msg($"BTR-70 LRF完成 | LaserOrigin={fcs.LaserOrigin.name} MaxRange={fcs.MaxLaserRange}");
                     }
                 }            
 
                 if (pt76_lrf.Value && name == "PT-76B")
                 {
-                    if (DEBUG_MODE && DEBUG_TIMING) MelonLogger.Msg($"[UE]   > 匹配 PT-76B 测距改装");
+                    UnderdogsDebug.LogTiming($"[UE]   > 匹配 PT-76B 测距改装");
                     WeaponsManager weapons_manager = vic.GetComponent<WeaponsManager>();
                     WeaponSystemInfo main_gun_info = weapons_manager.Weapons[0];
                     FireControlSystem fcs = main_gun_info.FCS;
@@ -1053,7 +1190,7 @@ namespace UnderdogsEnhanced
                     var day_optic = vic.gameObject.transform.Find("PT76_rig/HULL/TURRET/GUN/---MAIN GUN SCRIPTS---/D-56TS/Sights (and FCS)/GPS").GetComponent<GHPC.Equipment.Optics.UsableOptic>();
                     var pt76_gun = vic.gameObject.transform.Find("PT76_rig/HULL/TURRET/GUN");
 
-                    if (DEBUG_MODE && DEBUG_LRF)
+                    if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_LRF)
                     {
                         MelonLogger.Msg($"=== PT-76B LRF改装 ===");
                         MelonLogger.Msg($"UsableOptic: {day_optic?.name ?? "null"}");
@@ -1062,13 +1199,13 @@ namespace UnderdogsEnhanced
                     //ApplyLimitedLRF(fcs, day_optic, "PT", ref reticle_cached_pt76, pt76_gun, new Vector2(-278.2f, 289.4f));
                     ApplyRedDotLRF(fcs, day_optic, "PT", ref reticle_cached_pt76, pt76_gun);
 
-                    if (DEBUG_MODE && DEBUG_LRF)
+                    if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_LRF)
                         MelonLogger.Msg($"PT-76B LRF完成 | LaserOrigin={fcs.LaserOrigin?.name} MaxRange={fcs.MaxLaserRange}");
                 }
 
                 if (stab_t64_nsvt.Value && name.StartsWith("T-64") && name != "T-64R")
                 {
-                    if (DEBUG_MODE && DEBUG_TIMING) MelonLogger.Msg($"[UE]   > 匹配 T-64 NSVT稳定改装");
+                    UnderdogsDebug.LogTiming($"[UE]   > 匹配 T-64 NSVT稳定改装");
                     AimablePlatform[] aimables = vic.AimablePlatforms;
                     FieldInfo stab_mode = typeof(AimablePlatform).GetField("_stabMode", BindingFlags.Instance | BindingFlags.NonPublic);
                     FieldInfo stab_active = typeof(AimablePlatform).GetField("_stabActive", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -1092,7 +1229,7 @@ namespace UnderdogsEnhanced
 
                 if (t64_nsvt_optics.Value && name.StartsWith("T-64") && name != "T-64R")
                 {
-                    if (DEBUG_MODE && DEBUG_TIMING) MelonLogger.Msg($"[UE]   > 匹配 T-64 NSVT瞄具改装");
+                    UnderdogsDebug.LogTiming($"[UE]   > 匹配 T-64 NSVT瞄具改装");
                     CameraSlot cws_sight = vic.gameObject.transform.Find("---T64A_MESH---/HULL/TURRET/TC ring/TC AA sight/CWS gunsight")?.GetComponent<CameraSlot>();
                     if (cws_sight != null)
                         cws_sight.OtherFovs = new float[] { 25f, 12.5f, 6.25f };
@@ -1101,7 +1238,7 @@ namespace UnderdogsEnhanced
 
                 if (t54a_lrf.Value && name == "T-54A")
                 {
-                    if (DEBUG_MODE && DEBUG_TIMING) MelonLogger.Msg($"[UE]   > 匹配 T-54A 测距改装");
+                    UnderdogsDebug.LogTiming($"[UE]   > 匹配 T-54A 测距改装");
                     WeaponsManager wm = vic.GetComponent<WeaponsManager>();
                     FireControlSystem fcs = wm.Weapons[0].FCS;
                     var day_optic = vic.gameObject.transform.Find("T55A_skeleton/HULL/Turret/GUN/Gun Scripts/Sights (and FCS)/GPS")?.GetComponent<GHPC.Equipment.Optics.UsableOptic>();
@@ -1112,7 +1249,7 @@ namespace UnderdogsEnhanced
 
                 if ((stab_t3485m.Value || t3485m_optics.Value || t3485m_lrf.Value) && name == "T-34-85M")
                 {
-                    if (DEBUG_MODE && DEBUG_TIMING) MelonLogger.Msg($"[UE]   > 匹配 T-34-85M 改装 (stab={stab_t3485m.Value} optics={t3485m_optics.Value} lrf={t3485m_lrf.Value})");
+                    UnderdogsDebug.LogTiming($"[UE]   > 匹配 T-34-85M 改装 (stab={stab_t3485m.Value} optics={t3485m_optics.Value} lrf={t3485m_lrf.Value})");
                     WeaponsManager wm = vic.GetComponent<WeaponsManager>();
                     FireControlSystem fcs = wm.Weapons[0].FCS;
 
@@ -1152,6 +1289,9 @@ namespace UnderdogsEnhanced
                     }
                 }
 
+                    if (dumpA1A3)
+                        UnderdogsDebug.DumpVehicleOpticsSnapshot(vic, "POST", detailedOptics: true);
+
                     } // end try
                     catch (System.Exception ex)
                     {
@@ -1159,11 +1299,11 @@ namespace UnderdogsEnhanced
                     }
                 } // end foreach
 
-                if (DEBUG_MODE && DEBUG_TIMING)
+                if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_TIMING)
                     MelonLogger.Msg($"[UE] === 第{_uePass}/{_uePassCount}轮改装完成 | 耗时={Time.realtimeSinceStartup - _passStart:F3}s ===");
             } // end for pass
 
-            if (DEBUG_MODE && DEBUG_TIMING)
+            if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_TIMING)
                 MelonLogger.Msg($"[UE] <<< OnSceneWasInitialized 结束 | 总耗时={Time.realtimeSinceStartup - _sceneStartTime:F3}s");
         }
     }

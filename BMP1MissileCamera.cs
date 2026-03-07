@@ -147,7 +147,7 @@ namespace UnderdogsEnhanced
 
             initialized = true;
 
-            if (UnderdogsEnhancedMod.DEBUG_MODE)
+            if (UnderdogsDebug.DEBUG_MODE)
             {
                 MelonLogger.Msg($"[BMP-1 导弹热成像] 资源初始化完成: FLIR={flirPostPrefab != null}, BlitMatOriginal={flirBlitMaterialOriginal != null}, BlitMatNoScan={flirBlitMaterialNoScan != null}");
             }
@@ -158,8 +158,7 @@ namespace UnderdogsEnhanced
         {
             var go = new GameObject("MissileReticleCanvas");
             Canvas canvas = go.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = 1000;
+            ApplyPilCanvasPreset(canvas);
             CanvasScaler scaler = go.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920, 1080);
@@ -175,8 +174,7 @@ namespace UnderdogsEnhanced
             reticleCanvas.hideFlags = HideFlags.DontUnloadUnusedAsset;
 
             Canvas canvas = reticleCanvas.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = 1000;
+            ApplyPilCanvasPreset(canvas);
 
             CanvasScaler scaler = reticleCanvas.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
@@ -188,6 +186,17 @@ namespace UnderdogsEnhanced
             CreateReticleUI(reticleCanvas.transform);
 
             reticleCanvas.SetActive(false);
+        }
+
+        static void ApplyPilCanvasPreset(Canvas canvas)
+        {
+            if (canvas == null) return;
+
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.overrideSorting = false;
+            canvas.sortingOrder = 0;
+            canvas.planeDistance = 1f;
+            canvas.worldCamera = null;
         }
 
         static void CreateReticleUI(Transform parent)
@@ -319,10 +328,27 @@ namespace UnderdogsEnhanced
         private StudioEventEmitter[] _fmodEmitters;
 
         public GameObject opticNode;
+        private LiveRound _round;
+        private Vehicle _launchVehicle;
+        private int _launchVehicleInstanceId = -1;
+        private int _invalidStateFrameCount = 0;
+        private CameraSlot _latestNonMissileSlot;
+        private bool _forceCommanderOnRestore = false;
+        private const int INVALID_STATE_RESTORE_THRESHOLD = 2;
+        private static readonly string[] DestroyedBoolNames = new string[]
+        {
+            "IsDestroyed", "Destroyed", "IsDead", "Dead", "Killed", "IsKilled",
+            "KnockedOut", "IsKnockedOut", "UnitDestroyed", "IsUnitDestroyed", "Dying"
+        };
+        private static readonly string[] AliveBoolNames = new string[]
+        {
+            "IsAlive", "Alive"
+        };
+        private static readonly HashSet<string> DestroyedFallbackLogKeys = new HashSet<string>();
 
         void Start()
         {
-            if (UnderdogsEnhancedMod.DEBUG_MODE)
+            if (UnderdogsDebug.DEBUG_MODE)
                 MelonLogger.Msg("[BMP-1 MCLOS] Start() 被调用");
 
             try
@@ -330,7 +356,7 @@ namespace UnderdogsEnhanced
                 // 初始化热成像资源
                 MissileThermalAssets.Init();
 
-                if (UnderdogsEnhancedMod.DEBUG_MODE)
+                if (UnderdogsDebug.DEBUG_MODE)
                     MelonLogger.Msg("[BMP-1 MCLOS] MissileThermalAssets.Init() 完成");
 
                 _cam = CameraManager.MainCam;
@@ -348,7 +374,7 @@ namespace UnderdogsEnhanced
                         Destroy(this);
                         return;
                     }
-                    if (UnderdogsEnhancedMod.DEBUG_MODE)
+                    if (UnderdogsDebug.DEBUG_MODE)
                         MelonLogger.Msg($"[BMP-1 MCLOS] MainCam 获取成功: {camName}");
                 }
                 catch (System.Exception) {
@@ -359,6 +385,9 @@ namespace UnderdogsEnhanced
 
                 _cm = CameraManager.Instance;
                 _rb = GetComponent<Rigidbody>();
+                _round = GetComponent<LiveRound>();
+                _launchVehicle = _round?.Shooter?.GetComponentInParent<Vehicle>();
+                _launchVehicleInstanceId = _launchVehicle != null ? _launchVehicle.InstanceId : -1;
                 _prevSlot = CameraSlot.ActiveInstance;
                 _prevHadActiveSlot = _prevSlot != null;
                 _prevExteriorMode = _cm != null && _cm.ExteriorMode;
@@ -391,7 +420,7 @@ namespace UnderdogsEnhanced
                 // 降低导弹音效音量
                 SetupMissileAudio();
 
-                if (UnderdogsEnhancedMod.DEBUG_MODE)
+                if (UnderdogsDebug.DEBUG_MODE)
                     MelonLogger.Msg($"[BMP-1 MCLOS] 摄像机跟随启动，optic={opticNode?.name ?? "null"}, 热成像={_thermalSlotObj != null}");
             }
             catch (System.Exception e)
@@ -420,12 +449,12 @@ namespace UnderdogsEnhanced
 
         void SetupThermalVision()
         {
-            if (UnderdogsEnhancedMod.DEBUG_MODE)
+            if (UnderdogsDebug.DEBUG_MODE)
                 MelonLogger.Msg($"[BMP-1 MCLOS] SetupThermalVision 开始, flirPostPrefab={MissileThermalAssets.flirPostPrefab != null}");
 
             if (MissileThermalAssets.flirPostPrefab == null)
             {
-                if (UnderdogsEnhancedMod.DEBUG_MODE)
+                if (UnderdogsDebug.DEBUG_MODE)
                     MelonLogger.Warning("[BMP-1 MCLOS] FLIR预制件未找到，跳过热成像设置");
                 return;
             }
@@ -496,19 +525,175 @@ namespace UnderdogsEnhanced
             // 激活这个CameraSlot
             CameraSlot.SetActiveSlot(_thermalSlot);
 
-            if (UnderdogsEnhancedMod.DEBUG_MODE)
+            if (UnderdogsDebug.DEBUG_MODE)
             {
                 bool removeScanline = UnderdogsEnhancedMod.bmp1_mclos_flir_no_scanline == null || UnderdogsEnhancedMod.bmp1_mclos_flir_no_scanline.Value;
                 MelonLogger.Msg($"[BMP-1 MCLOS] 热成像设置完成: Slot={_thermalSlot != null}, SNV={_snv != null}, PostVolumeSet={postVolumeField != null}, Res={_thermalSlot.FLIRWidth}x{_thermalSlot.FLIRHeight}, NoScan={removeScanline}");
             }
         }
 
+
+        private bool ShouldKeepMissileCamera()
+        {
+            if (_round == null || _round.IsDestroyed) return false;
+
+            var playerInput = GHPC.Player.PlayerInput.Instance;
+            if (playerInput == null) return false;
+            if (!playerInput.IsUsingGuidedMissile) return false;
+
+            var playerUnit = playerInput.CurrentPlayerUnit;
+            if (playerUnit == null) return false;
+
+            // 关键兜底：游戏在载具被毁/丢失控制权时常进入 ExteriorMode + ActiveSlot=null。
+            // 一旦出现该状态，立刻退出导弹镜头，避免继续覆盖相机位置。
+            if (_cm != null && _cm.ExteriorMode && CameraSlot.ActiveInstance == null)
+                return false;
+
+            // 发射车可能被销毁或重建，尽量重新解析一次。
+            if (_launchVehicle == null || _launchVehicle.InstanceId != _launchVehicleInstanceId)
+            {
+                _launchVehicle = _round.Shooter?.GetComponentInParent<Vehicle>();
+                _launchVehicleInstanceId = _launchVehicle != null ? _launchVehicle.InstanceId : -1;
+            }
+
+            if (_launchVehicle == null) return false;
+            if (!_launchVehicle.gameObject.activeInHierarchy) return false;
+            if (IsObjectMarkedDestroyed(_launchVehicle)) return false;
+            if (IsObjectMarkedDestroyed(playerUnit)) return false;
+            if (playerUnit.InstanceId != _launchVehicle.InstanceId) return false;
+
+            var ws = playerInput.CurrentPlayerWeapon?.Weapon;
+            var gu = ws?.GuidanceUnit;
+            if (ws == null || gu == null) return false;
+            if (gu.Damaged) return false;
+
+            // 再确认当前制导单元确实持有这枚导弹，避免状态机残留导致镜头挂住。
+            var missiles = gu.CurrentMissiles;
+            if (missiles == null || !missiles.Contains(_round)) return false;
+
+            return true;
+        }
+
+        private static bool IsObjectMarkedDestroyed(object obj)
+        {
+            if (obj == null) return true;
+
+            // 强类型优先：当前版本 GHPC.Unit / GHPC.Vehicle.Vehicle 都有 Destroyed 属性。
+            if (obj is GHPC.Unit unit)
+                return unit.Destroyed;
+
+            var t = obj.GetType();
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            LogDestroyedFallbackOnce(
+                "fallback-enter:" + t.FullName,
+                $"[BMP-1 MCLOS] Destroyed 状态使用反射兜底: type={t.FullName}"
+            );
+
+            for (int i = 0; i < DestroyedBoolNames.Length; i++)
+            {
+                var p = t.GetProperty(DestroyedBoolNames[i], flags);
+                if (p != null && p.PropertyType == typeof(bool))
+                {
+                    try
+                    {
+                        if ((bool)p.GetValue(obj, null))
+                        {
+                            LogDestroyedFallbackOnce(
+                                "fallback-hit-prop:" + t.FullName + ":" + DestroyedBoolNames[i],
+                                $"[BMP-1 MCLOS] Destroyed 兜底命中属性: type={t.FullName}, name={DestroyedBoolNames[i]}, value=true"
+                            );
+                            return true;
+                        }
+                    }
+                    catch { }
+                }
+
+                var f = t.GetField(DestroyedBoolNames[i], flags);
+                if (f != null && f.FieldType == typeof(bool))
+                {
+                    try
+                    {
+                        if ((bool)f.GetValue(obj))
+                        {
+                            LogDestroyedFallbackOnce(
+                                "fallback-hit-field:" + t.FullName + ":" + DestroyedBoolNames[i],
+                                $"[BMP-1 MCLOS] Destroyed 兜底命中字段: type={t.FullName}, name={DestroyedBoolNames[i]}, value=true"
+                            );
+                            return true;
+                        }
+                    }
+                    catch { }
+                }
+            }
+
+            for (int i = 0; i < AliveBoolNames.Length; i++)
+            {
+                var p = t.GetProperty(AliveBoolNames[i], flags);
+                if (p != null && p.PropertyType == typeof(bool))
+                {
+                    try
+                    {
+                        if (!(bool)p.GetValue(obj, null))
+                        {
+                            LogDestroyedFallbackOnce(
+                                "fallback-hit-prop:" + t.FullName + ":" + AliveBoolNames[i],
+                                $"[BMP-1 MCLOS] Destroyed 兜底命中属性: type={t.FullName}, name={AliveBoolNames[i]}, value=false"
+                            );
+                            return true;
+                        }
+                    }
+                    catch { }
+                }
+
+                var f = t.GetField(AliveBoolNames[i], flags);
+                if (f != null && f.FieldType == typeof(bool))
+                {
+                    try
+                    {
+                        if (!(bool)f.GetValue(obj))
+                        {
+                            LogDestroyedFallbackOnce(
+                                "fallback-hit-field:" + t.FullName + ":" + AliveBoolNames[i],
+                                $"[BMP-1 MCLOS] Destroyed 兜底命中字段: type={t.FullName}, name={AliveBoolNames[i]}, value=false"
+                            );
+                            return true;
+                        }
+                    }
+                    catch { }
+                }
+            }
+
+            return false;
+        }
+
+        private static void LogDestroyedFallbackOnce(string key, string message)
+        {
+            if (!UnderdogsDebug.DEBUG_MODE) return;
+            if (DestroyedFallbackLogKeys.Contains(key)) return;
+            DestroyedFallbackLogKeys.Add(key);
+            MelonLogger.Msg(message);
+        }
+
         void LateUpdate()
         {
             if (_restored || _cam == null) return;
 
+            if (!ShouldKeepMissileCamera())
+            {
+                _invalidStateFrameCount++;
+                if (_invalidStateFrameCount >= INVALID_STATE_RESTORE_THRESHOLD)
+                {
+                    if (UnderdogsDebug.DEBUG_MODE)
+                        MelonLogger.Msg("[BMP-1 MCLOS] 玩家已失去导弹控制权，提前恢复导弹镜头");
+                    _forceCommanderOnRestore = true;
+                    Restore();
+                }
+                return;
+            }
+            _invalidStateFrameCount = 0;
+
             // P键调试：列出导弹及其父子对象的音频组件
-            if (Input.GetKeyDown(KeyCode.P))
+            if (UnderdogsDebug.DEBUG_MODE && UnderdogsDebug.DEBUG_MCLOS && Input.GetKeyDown(KeyCode.P))
             {
                 MelonLogger.Msg($"[BMP-1 MCLOS] === 导弹音频组件列表 ===");
 
@@ -532,8 +717,10 @@ namespace UnderdogsEnhanced
 
             // 阻止切换到其他视角（如commander视角）
             if (_thermalSlot != null && CameraSlot.ActiveInstance != _thermalSlot)
+            {
+                _latestNonMissileSlot = CameraSlot.ActiveInstance;
                 CameraSlot.SetActiveSlot(_thermalSlot);
-
+            }
             // 导弹头部视角：位于导弹前方
             _cam.transform.position = transform.position + transform.forward * 0.5f;
 
@@ -602,22 +789,31 @@ namespace UnderdogsEnhanced
                 _thermalSlotObj = null;
             }
 
-            var prevSlot = _prevSlot;
+            bool forceCommander = _forceCommanderOnRestore;
+            _forceCommanderOnRestore = false;
+
+            var prevSlot = forceCommander
+                ? null
+                : (_latestNonMissileSlot != null ? _latestNonMissileSlot : _prevSlot);
             var cm = _cm;
             var thermalSlot = _thermalSlot;
-            bool prevHadActiveSlot = _prevHadActiveSlot;
-            bool preferExterior = _prevExteriorMode || prevSlot == null || (prevSlot != null && prevSlot.IsExterior);
+            bool prevHadActiveSlot = forceCommander ? false : (prevSlot != null || _prevHadActiveSlot);
+            bool preferExterior = forceCommander || _prevExteriorMode || prevSlot == null || (prevSlot != null && prevSlot.IsExterior);
+            bool restoreOpticOnExit = _restoreOpticOnExit && !forceCommander;
+            bool restoreExteriorMode = forceCommander ? true : _prevExteriorMode;
             _thermalSlot = null;
             _snv = null;
 
             var node = opticNode;
             var cam = _cam;
+            if (UnderdogsDebug.DEBUG_MODE)
+                MelonLogger.Msg($"[BMP-1 MCLOS] Restore plan: forceCommander={forceCommander}, targetSlot={prevSlot?.name ?? "null"}, preferExterior={preferExterior}, restoreOptic={restoreOpticOnExit}, exteriorMode={restoreExteriorMode}");
             if (cam != null)
-                CoroutineRunner.Run(DelayedRestore(node, cam, _camOriginalLocalPos, _camOriginalLocalRot, _camOriginalFov, prevSlot, cm, thermalSlot, prevHadActiveSlot, preferExterior, _restoreOpticOnExit, _prevExteriorMode));
+                CoroutineRunner.Run(DelayedRestore(node, cam, _camOriginalLocalPos, _camOriginalLocalRot, _camOriginalFov, prevSlot, cm, thermalSlot, prevHadActiveSlot, preferExterior, restoreOpticOnExit, restoreExteriorMode));
             else if (node != null)
-                node.SetActive(_restoreOpticOnExit);
+                node.SetActive(false);
 
-            if (UnderdogsEnhancedMod.DEBUG_MODE)
+            if (UnderdogsDebug.DEBUG_MODE)
                 MelonLogger.Msg("[BMP-1 MCLOS] 摄像机恢复中...");
         }
 
@@ -657,6 +853,7 @@ namespace UnderdogsEnhanced
             try { slots = f_cm_allCamSlots.GetValue(cm) as CameraSlot[]; } catch { }
             if (slots == null || slots.Length == 0) return null;
 
+            CameraSlot commanderPreferred = null;
             CameraSlot preferred = null;
             CameraSlot secondary = null;
 
@@ -665,13 +862,33 @@ namespace UnderdogsEnhanced
                 var slot = slots[i];
                 if (slot == null || slot == excludedSlot) continue;
 
+                if (preferExterior && slot.IsExterior && commanderPreferred == null && IsCommanderLikeSlot(slot))
+                    commanderPreferred = slot;
+
                 if (slot.IsExterior == preferExterior && preferred == null)
                     preferred = slot;
                 else if (secondary == null)
                     secondary = slot;
             }
 
+            if (commanderPreferred != null) return commanderPreferred;
             return preferred != null ? preferred : secondary;
+        }
+
+        private static bool IsCommanderLikeSlot(CameraSlot slot)
+        {
+            if (slot == null) return false;
+
+            string n1 = slot.name ?? string.Empty;
+            string n2 = slot.transform != null ? slot.transform.name : string.Empty;
+            string n3 = slot.transform != null && slot.transform.parent != null ? slot.transform.parent.name : string.Empty;
+            string all = (n1 + " " + n2 + " " + n3).ToLowerInvariant();
+
+            return all.Contains("commander")
+                || all.Contains("cmdr")
+                || all.Contains("cupola")
+                || all.Contains("tc")
+                || all.Contains("head");
         }
 
         private static void TryRestoreCameraSlot(CameraSlot prevSlot, CameraManager cm, CameraSlot excludedSlot, bool prevHadActiveSlot, bool preferExterior)
@@ -688,6 +905,23 @@ namespace UnderdogsEnhanced
 
             if (targetSlot != null && CameraSlot.ActiveInstance != targetSlot)
                 CameraSlot.SetActiveSlot(targetSlot);
+        }
+
+        private static float ResolveRestoreFov(CameraManager cm, CameraSlot excludedSlot, float originalFov, bool preferExterior, bool restoreExteriorMode)
+        {
+            var activeSlot = CameraSlot.ActiveInstance;
+            if (activeSlot != null && activeSlot != excludedSlot && activeSlot.DefaultFov > 0.1f)
+                return activeSlot.DefaultFov;
+
+            var refSlot = FindFallbackSlot(cm, excludedSlot, preferExterior);
+            if (refSlot != null && refSlot.DefaultFov > 0.1f)
+                return refSlot.DefaultFov;
+
+            // ExteriorMode 且无激活 slot 时，游戏常态 FOV 通常接近 60。
+            if (restoreExteriorMode)
+                return 60f;
+
+            return originalFov;
         }
 
         // 引爆后继续覆盖摄像机位置几帧，等游戏系统稳定后再恢复 CameraSlot 与 Optic
@@ -714,11 +948,18 @@ namespace UnderdogsEnhanced
                 {
                     cam.transform.localPosition = localPos;
                     cam.transform.localRotation = localRot;
-                    cam.fieldOfView = originalFov;
+                    float desiredFov = ResolveRestoreFov(cm, excludedSlot, originalFov, preferExterior, restoreExteriorMode);
+                    cam.fieldOfView = desiredFov;
                 }
                 yield return null;
             }
-            if (node != null) node.SetActive(restoreOpticOnExit);
+            if (node != null)
+            {
+                bool interiorOpticSlot = CameraSlot.ActiveInstance != null && !CameraSlot.ActiveInstance.IsExterior;
+                node.SetActive(restoreOpticOnExit && interiorOpticSlot);
+                if (UnderdogsDebug.DEBUG_MODE)
+                    MelonLogger.Msg($"[BMP-1 MCLOS] Restore applied: activeSlot={CameraSlot.ActiveInstance?.name ?? "null"}, interiorOpticSlot={interiorOpticSlot}, opticActive={node.activeSelf}");
+            }
         }
 
         void OnDestroy() => Restore();
@@ -1128,7 +1369,7 @@ namespace UnderdogsEnhanced
 
             string ammoName = __instance.Info?.Name;
 
-            //if (UnderdogsEnhancedMod.DEBUG_MODE)
+            //if (UnderdogsDebug.DEBUG_MODE)
                 //MelonLogger.Msg($"[BMP-1 MCLOS] 检测到弹药: {ammoName}");
 
             // 名称在不同装填时机下可能仍显示旧名，这里统一按 MCLOS 相关名称判断
@@ -1143,7 +1384,7 @@ namespace UnderdogsEnhanced
             var follow = __instance.gameObject.AddComponent<MissileCameraFollow>();
             follow.opticNode = optic != null ? optic.gameObject : null;
 
-            if (UnderdogsEnhancedMod.DEBUG_MODE)
+            if (UnderdogsDebug.DEBUG_MODE)
                 MelonLogger.Msg($"[BMP-1 MCLOS] 导弹摄像机已附加: {ammoName}, optic={BMP1OpticNode?.name ?? "null"}");
         }
 

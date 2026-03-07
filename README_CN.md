@@ -27,8 +27,8 @@ Underdogs 只是个玩笑，别当真。
 | BTR-70 | 炮塔旋转速度提升 | 开启 |
 | BTR-70 | 炮手瞄准镜变焦档位 | 开启 |
 | BTR-70 | 激光测距仪（仅显示，无自动测距） | 开启 |
-| Leopard A1A4 | 激光测距仪替换光学测距仪（4000m） | 开启 |
-| Leopard 1 系列（所有型号） | 激光测距仪替换光学测距仪（4000m） | 关闭 |
+| Leopard 1 系列（所有型号） | EMES18 火控系统（激光测距仪 + 3-12x FLIR 热成像 + point-n-shoot） | 开启 |
+| Leopard 1 系列（所有型号） | DM63 APFSDS-T 穿甲弹替换原版 APFSDS | 开启 |
 | PT-76B | 激光测距仪（含自动测距） | 开启 |
 | PT-76B | 炮手瞄准镜变焦档位 | 开启 |
 | T-64 系列（NSVT） | NSVT 高射机枪稳定器 | 开启 |
@@ -56,7 +56,7 @@ BMP-1 Rangefinder = true
 BMP-1 9M14TV Malyutka-TV = true
 BMP-1 MCLOS Ready Missiles = -1
 BMP-1 MCLOS FLIR High Resolution = false
-BMP-1 MCLOS FLIR Remove Scanline = true
+BMP-1 MCLOS FLIR Remove Scanline = false
 BMP-1P Konkurs Stab = false
 Marder Stabilizer = true
 Marder MILAN Stabilizer = true
@@ -69,8 +69,22 @@ BTR-70 Stabilizer = true
 BTR-70 Turret Speed = true
 BTR-70 Optics = true
 BTR-70 Rangefinder = true
-Leopard A1A4 Laser = true
-Leopard All Laser = false
+Leopard A1A4 EMES18 Sight = true
+Leopard A1A4 DM63 Ammo = true
+Leopard 1A3 EMES18 Sight = true
+Leopard 1A3 DM63 Ammo = true
+Leopard 1A3A2 EMES18 Sight = true
+Leopard 1A3A2 DM63 Ammo = true
+Leopard A1A1 EMES18 Sight = true
+Leopard A1A1 DM63 Ammo = true
+Leopard A1A3 EMES18 Sight = true
+Leopard A1A3 DM63 Ammo = true
+Leopard 1A3A1 EMES18 Sight = true
+Leopard 1A3A1 DM63 Ammo = true
+Leopard 1A3A3 EMES18 Sight = true
+Leopard 1A3A3 DM63 Ammo = true
+Leopard A1A2 EMES18 Sight = true
+Leopard A1A2 DM63 Ammo = true
 PT-76B Rangefinder = true
 PT-76B Optics = true
 T-64 NSVT Stabilizer = true

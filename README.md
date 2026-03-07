@@ -29,8 +29,8 @@ Based on work by [ATLAS](https://github.com/thebeninator/Stabilized-BMP-1)
 | BTR-70 | Increased turret traverse speed | On |
 | BTR-70 | Gunner sight zoom levels | On |
 | BTR-70 | Laser rangefinder (display only, no auto-ranging) | On |
-| Leopard A1A4 | Laser rangefinder replacing optical (4000m) | On |
-| Leopard 1 series (all variants) | Laser rangefinder replacing optical (4000m) | Off |
+| Leopard 1 series (all variants) | EMES18 fire control system with laser rangefinder, 3-12x FLIR optics, and point-n-shoot | On |
+| Leopard 1 series (all variants) | DM63 APFSDS-T replacing stock APFSDS | On |
 | PT-76B | Laser rangefinder with auto-ranging | On |
 | PT-76B | Gunner sight zoom levels | On |
 | T-64 series (NSVT) | NSVT cupola stabilizer | On |
@@ -58,7 +58,7 @@ BMP-1 Rangefinder = true
 BMP-1 9M14TV Malyutka-TV = true
 BMP-1 MCLOS Ready Missiles = -1
 BMP-1 MCLOS FLIR High Resolution = false
-BMP-1 MCLOS FLIR Remove Scanline = true
+BMP-1 MCLOS FLIR Remove Scanline = false
 BMP-1P Konkurs Stab = false
 Marder Stabilizer = true
 Marder MILAN Stabilizer = true
@@ -71,8 +71,22 @@ BTR-70 Stabilizer = true
 BTR-70 Turret Speed = true
 BTR-70 Optics = true
 BTR-70 Rangefinder = true
-Leopard A1A4 Laser = true
-Leopard All Laser = false
+Leopard A1A4 EMES18 Sight = true
+Leopard A1A4 DM63 Ammo = true
+Leopard 1A3 EMES18 Sight = true
+Leopard 1A3 DM63 Ammo = true
+Leopard 1A3A2 EMES18 Sight = true
+Leopard 1A3A2 DM63 Ammo = true
+Leopard A1A1 EMES18 Sight = true
+Leopard A1A1 DM63 Ammo = true
+Leopard A1A3 EMES18 Sight = true
+Leopard A1A3 DM63 Ammo = true
+Leopard 1A3A1 EMES18 Sight = true
+Leopard 1A3A1 DM63 Ammo = true
+Leopard 1A3A3 EMES18 Sight = true
+Leopard 1A3A3 DM63 Ammo = true
+Leopard A1A2 EMES18 Sight = true
+Leopard A1A2 DM63 Ammo = true
 PT-76B Rangefinder = true
 PT-76B Optics = true
 T-64 NSVT Stabilizer = true
