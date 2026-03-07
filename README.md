@@ -96,3 +96,8 @@ T-34-85M Stabilizer = false
 T-34-85M Optics = true
 T-34-85M Rangefinder = true
 ```
+
+## Credit
+
+- This project bundles the DSEG font family by Keshikan, licensed under the SIL Open Font License 1.1
+    - Source: https://github.com/keshikan/DSEG
