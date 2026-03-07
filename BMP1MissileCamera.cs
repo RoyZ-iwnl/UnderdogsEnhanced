@@ -334,6 +334,7 @@ namespace UnderdogsEnhanced
         private int _invalidStateFrameCount = 0;
         private CameraSlot _latestNonMissileSlot;
         private bool _forceCommanderOnRestore = false;
+        private bool _cameraActive = false;
         private const int INVALID_STATE_RESTORE_THRESHOLD = 2;
         private static readonly string[] DestroyedBoolNames = new string[]
         {
@@ -388,45 +389,49 @@ namespace UnderdogsEnhanced
                 _round = GetComponent<LiveRound>();
                 _launchVehicle = _round?.Shooter?.GetComponentInParent<Vehicle>();
                 _launchVehicleInstanceId = _launchVehicle != null ? _launchVehicle.InstanceId : -1;
-                _prevSlot = CameraSlot.ActiveInstance;
-                _prevHadActiveSlot = _prevSlot != null;
-                _prevExteriorMode = _cm != null && _cm.ExteriorMode;
-                _restoreOpticOnExit = opticNode != null && opticNode.activeSelf && _prevSlot != null && !_prevSlot.IsExterior && !_prevExteriorMode;
-
-                // 保存摄像机原始本地位置和旋转
-                _camOriginalLocalPos = _cam.transform.localPosition;
-                _camOriginalLocalRot = _cam.transform.localRotation;
-                _camOriginalFov = _cam.fieldOfView;
-
-                // 外部模式会让相机跟随系统抢控制权，导致导弹视角变成追尾第三人称
-                TrySetExteriorMode(_cm, false);
-
-                if (opticNode != null) opticNode.SetActive(false);
-
-                MissileCameraActive.IsActive = true;
-
-                // 设置热成像效果
-                SetupThermalVision();
-
-                // 强制设置相机 FOV
-                if (_cam != null)
-                    _cam.fieldOfView = 15f;
-
-                // 创建独立准星（每个导弹实例独立，避免多准星问题）
-                _reticleCanvas = MissileThermalAssets.CreateReticleInstance();
-                if (_reticleCanvas != null)
-                    _reticleCanvas.SetActive(true);
-
-                // 降低导弹音效音量
-                SetupMissileAudio();
-
                 if (UnderdogsDebug.DEBUG_MODE)
-                    MelonLogger.Msg($"[BMP-1 MCLOS] 摄像机跟随启动，optic={opticNode?.name ?? "null"}, 热成像={_thermalSlotObj != null}");
+                    MelonLogger.Msg($"[BMP-1 MCLOS] 导弹跟随组件待机，optic={opticNode?.name ?? "null"}");
             }
             catch (System.Exception e)
             {
                 MelonLogger.Error($"[BMP-1 MCLOS] Start() 异常: {e.Message}\n{e.StackTrace}");
             }
+        }
+
+        private void ActivateMissileCamera()
+        {
+            if (_cameraActive || _restored || _cam == null) return;
+
+            _prevSlot = CameraSlot.ActiveInstance;
+            _prevHadActiveSlot = _prevSlot != null;
+            _prevExteriorMode = _cm != null && _cm.ExteriorMode;
+            _restoreOpticOnExit = opticNode != null && opticNode.activeSelf && _prevSlot != null && !_prevSlot.IsExterior && !_prevExteriorMode;
+
+            _camOriginalLocalPos = _cam.transform.localPosition;
+            _camOriginalLocalRot = _cam.transform.localRotation;
+            _camOriginalFov = _cam.fieldOfView;
+
+            TrySetExteriorMode(_cm, false);
+
+            if (opticNode != null)
+                opticNode.SetActive(false);
+
+            MissileCameraActive.IsActive = true;
+
+            SetupThermalVision();
+
+            if (_cam != null)
+                _cam.fieldOfView = 15f;
+
+            _reticleCanvas = MissileThermalAssets.CreateReticleInstance();
+            if (_reticleCanvas != null)
+                _reticleCanvas.SetActive(true);
+
+            SetupMissileAudio();
+            _cameraActive = true;
+
+            if (UnderdogsDebug.DEBUG_MODE)
+                MelonLogger.Msg($"[BMP-1 MCLOS] 摄像机跟随启动，optic={opticNode?.name ?? "null"}, 热成像={_thermalSlotObj != null}");
         }
 
         void SetupMissileAudio()
@@ -678,7 +683,16 @@ namespace UnderdogsEnhanced
         {
             if (_restored || _cam == null) return;
 
-            if (!ShouldKeepMissileCamera())
+            bool shouldKeep = ShouldKeepMissileCamera();
+
+            if (!_cameraActive)
+            {
+                if (!shouldKeep) return;
+                ActivateMissileCamera();
+                if (!_cameraActive) return;
+            }
+
+            if (!shouldKeep)
             {
                 _invalidStateFrameCount++;
                 if (_invalidStateFrameCount >= INVALID_STATE_RESTORE_THRESHOLD)
@@ -762,7 +776,11 @@ namespace UnderdogsEnhanced
             if (_restored) return;
             _restored = true;
 
+            if (!_cameraActive)
+                return;
+
             MissileCameraActive.IsActive = false;
+            _cameraActive = false;
 
             // 恢复音效音量
             if (_audioSources != null && _originalVolumes != null)
@@ -1357,7 +1375,6 @@ namespace UnderdogsEnhanced
         private static void Postfix(LiveRound __instance)
         {
             if (!UnderdogsEnhancedMod.bmp1_mclos.Value) return;
-            if (__instance.NpcRound) return;
 
             // 从发射者获取载具名称，避免静态变量被多车覆盖的问题
             var shooter = __instance.Shooter;
@@ -1375,9 +1392,6 @@ namespace UnderdogsEnhanced
             // 名称在不同装填时机下可能仍显示旧名，这里统一按 MCLOS 相关名称判断
             if (!BMP1MCLOSAmmo.IsOriginalMissileName(ammoName)) return;
 
-            // 额外检查：确保发射者是玩家控制的载具
-            if (!IsPlayerControlled(__instance)) return;
-
             // 从发射者车辆动态获取 optic 节点，避免静态变量被多车覆盖
             var optic = vehicle.gameObject.transform.Find("BMP1_rig/HULL/TURRET/GUN/Gun Scripts/gunner day sight/Optic");
 
@@ -1386,29 +1400,6 @@ namespace UnderdogsEnhanced
 
             if (UnderdogsDebug.DEBUG_MODE)
                 MelonLogger.Msg($"[BMP-1 MCLOS] 导弹摄像机已附加: {ammoName}, optic={BMP1OpticNode?.name ?? "null"}");
-        }
-
-        // 检查弹药是否由玩家控制的载具发射
-        private static bool IsPlayerControlled(LiveRound round)
-        {
-            var shooter = round.Shooter;
-            if (shooter == null) return false;
-
-            // 从游戏管理器获取 PlayerInput
-            var gameManager = GameObject.Find("_APP_GHPC_");
-            if (gameManager == null) return false;
-
-            var playerInput = gameManager.GetComponent<GHPC.Player.PlayerInput>();
-            if (playerInput == null) return false;
-
-            var playerUnit = playerInput.CurrentPlayerUnit;
-            if (playerUnit == null) return false;
-
-            // 检查发射者所在的载具是否是玩家当前控制的载具
-            var shooterVehicle = shooter.GetComponentInParent<GHPC.Vehicle.Vehicle>();
-            if (shooterVehicle == null) return false;
-
-            return shooterVehicle.InstanceId == playerUnit.InstanceId;
         }
     }
 }
