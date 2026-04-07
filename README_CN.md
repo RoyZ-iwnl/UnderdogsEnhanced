@@ -42,6 +42,12 @@ Underdogs 只是个玩笑，别当真。
 | T-34-85M | 炮手瞄准镜变焦档位 | 开启 |
 | T-34-85M | 激光测距仪（含自动测距） | 开启 |
 
+### 调试功能
+
+| 功能 | 描述 | 默认状态 |
+|---|---|---|
+| 车辆修理 | 按 **J** 键完全修复当前车辆（发动机、变速箱、履带、炮塔、乘员等） | 开启 |
+
 ## 安装
 
 在 [GHPC Mod Manager](https://GHPC.DMR.gg/) 上一键安装
@@ -108,9 +114,12 @@ T-54A Rangefinder = true
 T-34-85M Stabilizer = false
 T-34-85M Optics = true
 T-34-85M Rangefinder = true
+Repair Function = true
 ```
 
 ## Credit
 
 - This project bundles the DSEG font family by Keshikan, licensed under the SIL Open Font License 1.1
     - Source: https://github.com/keshikan/DSEG
+
+- 3D model "[EMES18]" by [KojfDiscord] is licensed under CC BY 4.0. Source: [Sketchfab](https://skfb.ly/psUAy). Modified by RoyZ.

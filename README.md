@@ -44,6 +44,12 @@ Based on work by [ATLAS](https://github.com/thebeninator/Stabilized-BMP-1)
 | T-34-85M | Gunner sight zoom levels | On |
 | T-34-85M | Laser rangefinder with auto-ranging | On |
 
+### Debug Features
+
+| Feature | Description | Default |
+|---|---|---|
+| Vehicle Repair | Press **J** key to fully repair current vehicle (engine, transmission, tracks, turret, crew, etc.) | On |
+
 ## Installation
 
 One key install Available on [GHPC Mod Manager](https://GHPC.DMR.gg/?lang=en)
@@ -110,9 +116,12 @@ T-54A Rangefinder = true
 T-34-85M Stabilizer = false
 T-34-85M Optics = true
 T-34-85M Rangefinder = true
+Repair Function = true
 ```
 
 ## Credit
 
 - This project bundles the DSEG font family by Keshikan, licensed under the SIL Open Font License 1.1
     - Source: https://github.com/keshikan/DSEG
+
+- 3D model "[EMES18]" by [KojfDiscord] is licensed under CC BY 4.0. Source: [Sketchfab](https://skfb.ly/psUAy). Modified by RoyZ.
