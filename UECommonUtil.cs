@@ -130,10 +130,21 @@ namespace UnderdogsEnhanced
             "LOADER_INITIAL",
             "t64_menu"
         };
+        internal static readonly HashSet<string> PrimaryMenuScenes = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "MainMenu2_Scene",
+            "MainMenu2-1_Scene",
+            "t64_menu"
+        };
 
         internal static bool IsMenuScene(string sceneName)
         {
             return !string.IsNullOrEmpty(sceneName) && MenuScenes.Contains(sceneName);
+        }
+
+        internal static bool IsPrimaryMenuScene(string sceneName)
+        {
+            return !string.IsNullOrEmpty(sceneName) && PrimaryMenuScenes.Contains(sceneName);
         }
 
         internal static void ShallowCopy(object destination, object source)
@@ -367,6 +378,17 @@ namespace UnderdogsEnhanced
                 }
             }
             catch { }
+        }
+
+        internal static void EmptyAllLoadoutRacks(LoadoutManager loadoutManager)
+        {
+            if (loadoutManager?.RackLoadouts == null)
+                return;
+
+            for (int i = 0; i < loadoutManager.RackLoadouts.Length; i++)
+            {
+                EmptyRack(loadoutManager.RackLoadouts[i]?.Rack);
+            }
         }
 
         internal static void ReplaceReadyRack(GHPC.Weapons.AmmoRack rack, AmmoType.AmmoClip clipType, int storedCount)

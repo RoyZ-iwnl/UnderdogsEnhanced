@@ -19,7 +19,6 @@ Underdogs 只是个玩笑，别当真。
 | Marder 1A2 / A1- / A1+ | 稳定器 | 开启 |
 | Marder 1A2 / A1+ | MILAN 导弹发射器稳定器 | 开启 |
 | Marder 1A2 / A1- / A1+ | 激光测距仪（4000m）+ 视差修正 | 开启 |
-| Marder 1A2 / A1+ | Spike风格混合TV/FnF导弹（WIP） | 关闭 |
 | BRDM-2 | 稳定器 | 开启 |
 | BRDM-2 | 炮塔旋转速度提升 | 开启 |
 | BRDM-2 | 炮手瞄准镜变焦档位 | 开启 |
@@ -28,11 +27,8 @@ Underdogs 只是个玩笑，别当真。
 | BTR-70 | 炮塔旋转速度提升 | 开启 |
 | BTR-70 | 炮手瞄准镜变焦档位 | 开启 |
 | BTR-70 | 激光测距仪（仅显示，无自动测距） | 开启 |
-| Leopard 1A3 / 1A3A1 / 1A3A2 / 1A3A3 | 转换为 Leopard 1A5（EMES-18 瞄具 + 新炮塔） | 开启 |
-| Leopard 1A3 系列 | 仅 EMES-18 火控系统（不改变外观） | 关闭 |
-| Leopard A1A1 / A1A2 / A1A3 / A1A4 | 转换为 Leopard 1A5（EMES-18 瞄具 + 新炮塔） | 开启 |
-| Leopard A1 系列 | 仅 EMES-18 火控系统（不改变外观） | 关闭 |
-| Leopard 1A5 / 转换后型号 | AP 弹药选择：默认 / DM33 (420mm) / DM63 (447mm) | 默认 |
+| Leopard 1 系列（所有型号） | EMES18 火控系统（激光测距仪 + 3-12x FLIR 热成像 + point-n-shoot） | 开启 |
+| Leopard 1 系列（所有型号） | DM63 APFSDS-T 穿甲弹替换原版 APFSDS | 开启 |
 | PT-76B | 激光测距仪（含自动测距） | 开启 |
 | PT-76B | 炮手瞄准镜变焦档位 | 开启 |
 | T-64 系列（NSVT） | NSVT 高射机枪稳定器 | 开启 |
@@ -41,12 +37,6 @@ Underdogs 只是个玩笑，别当真。
 | T-34-85M | 稳定器（略有 bug） | 关闭 |
 | T-34-85M | 炮手瞄准镜变焦档位 | 开启 |
 | T-34-85M | 激光测距仪（含自动测距） | 开启 |
-
-### 调试功能
-
-| 功能 | 描述 | 默认状态 |
-|---|---|---|
-| 车辆修理 | 按 **J** 键完全修复当前车辆（发动机、变速箱、履带、炮塔、乘员等） | 开启 |
 
 ## 安装
 
@@ -71,8 +61,6 @@ BMP-1P Konkurs Stab = false
 Marder Stabilizer = true
 Marder MILAN Stabilizer = true
 Marder Rangefinder = true
-Marder Spike WIP = false
-Marder Spike Ready Missiles = -1
 BRDM-2 Stabilizer = true
 BRDM-2 Turret Speed = true
 BRDM-2 Optics = true
@@ -81,31 +69,22 @@ BTR-70 Stabilizer = true
 BTR-70 Turret Speed = true
 BTR-70 Optics = true
 BTR-70 Rangefinder = true
-Leopard 1A3 Convert to 1A5 = true
-Leopard 1A3 EMES18 FCS Only = false
-Leopard 1A3 Ammo AP Rounds = Default
-Leopard 1A3A1 Convert to 1A5 = true
-Leopard 1A3A1 EMES18 FCS Only = false
-Leopard 1A3A1 Ammo AP Rounds = Default
-Leopard 1A3A2 Convert to 1A5 = true
-Leopard 1A3A2 EMES18 FCS Only = false
-Leopard 1A3A2 Ammo AP Rounds = Default
-Leopard 1A3A3 Convert to 1A5 = true
-Leopard 1A3A3 EMES18 FCS Only = false
-Leopard 1A3A3 Ammo AP Rounds = Default
-Leopard A1A1 Convert to 1A5 = true
-Leopard A1A1 EMES18 FCS Only = false
-Leopard A1A1 Ammo AP Rounds = Default
-Leopard A1A2 Convert to 1A5 = true
-Leopard A1A2 EMES18 FCS Only = false
-Leopard A1A2 Ammo AP Rounds = Default
-Leopard A1A3 Convert to 1A5 = true
-Leopard A1A3 EMES18 FCS Only = false
-Leopard A1A3 Ammo AP Rounds = Default
-Leopard A1A4 Convert to 1A5 = true
-Leopard A1A4 EMES18 FCS Only = false
-Leopard A1A4 Ammo AP Rounds = Default
-Leopard 1A5 Ammo AP Rounds = Default
+Leopard A1A4 EMES18 Sight = true
+Leopard A1A4 DM63 Ammo = true
+Leopard 1A3 EMES18 Sight = true
+Leopard 1A3 DM63 Ammo = true
+Leopard 1A3A2 EMES18 Sight = true
+Leopard 1A3A2 DM63 Ammo = true
+Leopard A1A1 EMES18 Sight = true
+Leopard A1A1 DM63 Ammo = true
+Leopard A1A3 EMES18 Sight = true
+Leopard A1A3 DM63 Ammo = true
+Leopard 1A3A1 EMES18 Sight = true
+Leopard 1A3A1 DM63 Ammo = true
+Leopard 1A3A3 EMES18 Sight = true
+Leopard 1A3A3 DM63 Ammo = true
+Leopard A1A2 EMES18 Sight = true
+Leopard A1A2 DM63 Ammo = true
 PT-76B Rangefinder = true
 PT-76B Optics = true
 T-64 NSVT Stabilizer = true
@@ -114,12 +93,9 @@ T-54A Rangefinder = true
 T-34-85M Stabilizer = false
 T-34-85M Optics = true
 T-34-85M Rangefinder = true
-Repair Function = true
 ```
 
 ## Credit
 
 - This project bundles the DSEG font family by Keshikan, licensed under the SIL Open Font License 1.1
     - Source: https://github.com/keshikan/DSEG
-
-- 3D model "[EMES18]" by [KojfDiscord] is licensed under CC BY 4.0. Source: [Sketchfab](https://skfb.ly/psUAy). Modified by RoyZ.

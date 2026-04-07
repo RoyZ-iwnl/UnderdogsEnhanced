@@ -1759,31 +1759,12 @@ namespace UnderdogsEnhanced
             return true;
         }
 
-        private static Vehicle LoadMarderDonorVehicle()
-        {
-            string[] donorNames = new[] { "Marder1A2", "MARDER1A2" };
-            Vehicle donorVehicle = UEAssetUtil.PrewarmVanillaVehicle(
-                "EMES18 Marder donor",
-                donorNames,
-                new[] { "Marder1A1_rig/hull/turret/FLIR", "FLIR", "Marder1A1_rig/hull/turret/PERI Z11", "PERI Z11" });
-
-            if (donorVehicle == null)
-            {
-                donorVehicle = Resources.FindObjectsOfTypeAll<Vehicle>().FirstOrDefault(vehicle =>
-                    vehicle != null &&
-                    ((vehicle.name ?? string.Empty).IndexOf("Marder", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                     (vehicle.FriendlyName ?? string.Empty).IndexOf("Marder", StringComparison.OrdinalIgnoreCase) >= 0));
-            }
-
-            return donorVehicle;
-        }
-
         private static ReticleMesh LoadPeriZ11DayDonorMesh()
         {
             if (emes_day_donor_mesh != null)
                 return emes_day_donor_mesh;
 
-            Vehicle donorVehicle = LoadMarderDonorVehicle();
+            Vehicle donorVehicle = UEAssetUtil.PrewarmVanillaVehicle("MARDER1A2", new[] { "Marder1A1_rig/hull/turret/FLIR", "FLIR", "Marder1A1_rig/hull/turret/PERI Z11", "PERI Z11" });
             if (donorVehicle == null)
             {
                 MelonLoader.MelonLogger.Warning("[EMES18] Thermal donor load failed: Marder donor vehicle unavailable");
@@ -1812,7 +1793,7 @@ namespace UnderdogsEnhanced
                 return emes_thermal_donor;
             }
 
-            Vehicle donorVehicle = LoadMarderDonorVehicle();
+            Vehicle donorVehicle = UEAssetUtil.PrewarmVanillaVehicle("MARDER1A2", new[] { "Marder1A1_rig/hull/turret/FLIR", "FLIR", "Marder1A1_rig/hull/turret/PERI Z11", "PERI Z11" });
             if (donorVehicle == null)
                 return null;
 
@@ -1840,17 +1821,16 @@ namespace UnderdogsEnhanced
                 return null;
             }
 
-            float wideFov = donorOptic.slot.DefaultFov;
-            float narrowFov = donorOptic.slot.OtherFovs != null && donorOptic.slot.OtherFovs.Length > 0
-                ? donorOptic.slot.OtherFovs[0]
-                : donorOptic.slot.DefaultFov;
+            // Use EMES18's own FOV values, not donor's
+            float wideFov = EMES_WFOV;
+            float narrowFov = EMES_NFOV;
 
             emes_thermal_donor = new EmesThermalDonor
             {
                 NfovMesh = nfovMesh,
                 WfovMesh = wfovMesh,
-                DefaultFov = donorOptic.slot.DefaultFov,
-                OtherFovs = donorOptic.slot.OtherFovs != null ? (float[])donorOptic.slot.OtherFovs.Clone() : new float[0],
+                DefaultFov = EMES_WFOV,
+                OtherFovs = new float[] { EMES_NFOV },
                 WideFov = wideFov,
                 NarrowFov = narrowFov
             };

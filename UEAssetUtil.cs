@@ -16,40 +16,33 @@ namespace UnderdogsEnhanced
         private static readonly List<AssetReference> loadedAssetReferences = new List<AssetReference>();
         private static readonly HashSet<string> prewarmedVehicleKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        internal static Vehicle LoadFirstVanillaVehicle(params string[] names)
+        /// <summary>
+        /// 预热原生载具资源，加载 prefab 并预热指定路径下的组件。
+        /// </summary>
+        /// <param name="name">载具注册名（UnitPrefabLookupScriptable 中的 metadata.Name，如 "MARDER1A2"、"M60A3TTS"、"M1IP"）</param>
+        /// <param name="probePaths">要预热的子物体路径数组，用于预热特定组件（如光学、热成像等）</param>
+        /// <returns>加载的 Vehicle 实例，已预热或 null</returns>
+        /// <example>
+        /// UEAssetUtil.PrewarmVanillaVehicle("MARDER1A2", new[] { "Marder1A1_rig/hull/turret/FLIR", "FLIR" });
+        /// UEAssetUtil.PrewarmVanillaVehicle("M60A3TTS", new[] { "Turret Scripts/Sights/FLIR" });
+        /// UEAssetUtil.LoadVanillaVehicle("M1IP"); // 仅加载不预热特定路径
+        /// </example>
+        internal static Vehicle PrewarmVanillaVehicle(string name, string[] probePaths = null)
         {
-            if (names == null)
+            if (string.IsNullOrWhiteSpace(name))
                 return null;
 
-            for (int i = 0; i < names.Length; i++)
-            {
-                string candidate = names[i];
-                if (string.IsNullOrWhiteSpace(candidate))
-                    continue;
-
-                Vehicle vehicle = LoadVanillaVehicle(candidate);
-                if (vehicle != null)
-                    return vehicle;
-            }
-
-            return null;
-        }
-
-        internal static Vehicle PrewarmVanillaVehicle(string logLabel, string[] candidateNames, string[] probePaths = null)
-        {
-            if (candidateNames == null || candidateNames.Length == 0)
-                return null;
-
-            string cacheKey = string.Join("|", candidateNames.Where(name => !string.IsNullOrWhiteSpace(name)).ToArray());
-            Vehicle vehicle = LoadFirstVanillaVehicle(candidateNames);
+            Vehicle vehicle = LoadVanillaVehicle(name);
             if (vehicle == null)
             {
-                string label = string.IsNullOrWhiteSpace(logLabel) ? "unknown" : logLabel;
-                MelonLoader.MelonLogger.Warning($"[Assets] Vanilla donor prewarm miss: {label} | candidates=[{string.Join(", ", candidateNames.Where(name => !string.IsNullOrWhiteSpace(name)).ToArray())}]");
+#if DEBUG
+                UnderdogsDebug.Log($"[Assets] Vanilla donor prewarm miss: {name}");
+#endif
                 return null;
             }
 
-            if (!string.IsNullOrWhiteSpace(cacheKey) && prewarmedVehicleKeys.Contains(cacheKey))
+            string cacheKey = name;
+            if (prewarmedVehicleKeys.Contains(cacheKey))
                 return vehicle;
 
             try
@@ -82,18 +75,15 @@ namespace UnderdogsEnhanced
                     }
                 }
 
-                if (!string.IsNullOrWhiteSpace(cacheKey))
-                    prewarmedVehicleKeys.Add(cacheKey);
+                prewarmedVehicleKeys.Add(cacheKey);
 
 #if DEBUG
-                string label = string.IsNullOrWhiteSpace(logLabel) ? vehicle.name : logLabel;
-                UnderdogsDebug.Log($"[Assets] Prewarmed vanilla donor: {label} | vehicle={vehicle.name} transforms={(transforms != null ? transforms.Length : 0)} optics={(optics != null ? optics.Length : 0)} reticles={(meshes != null ? meshes.Length : 0)} probes={resolvedProbes}/{(probePaths != null ? probePaths.Length : 0)}");
+                UnderdogsDebug.Log($"[Assets] Prewarmed vanilla donor: {name} | transforms={(transforms != null ? transforms.Length : 0)} optics={(optics != null ? optics.Length : 0)} reticles={(meshes != null ? meshes.Length : 0)} probes={resolvedProbes}/{(probePaths != null ? probePaths.Length : 0)}");
 #endif
             }
             catch (Exception ex)
             {
-                string label = string.IsNullOrWhiteSpace(logLabel) ? vehicle.name : logLabel;
-                MelonLoader.MelonLogger.Warning($"[Assets] Vanilla donor prewarm failed: {label} | {ex.Message}");
+                MelonLoader.MelonLogger.Warning($"[Assets] Vanilla donor prewarm failed: {name} | {ex.Message}");
             }
 
             return vehicle;
@@ -136,6 +126,7 @@ namespace UnderdogsEnhanced
             }
 
             loadedAssetReferences.Clear();
+            prewarmedVehicleKeys.Clear();
         }
 
         internal static GameObject CloneInactive(GameObject source, string cloneName = null)

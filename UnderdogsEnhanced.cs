@@ -70,10 +70,12 @@ namespace UnderdogsEnhanced
 
             UEResourceController.UnloadDynamicAssets();
 
-            if (UECommonUtil.IsMenuScene(sceneName))
+            if (UECommonUtil.IsPrimaryMenuScene(sceneName))
             {
+                UEResourceController.ReleaseVanillaDonorAssets();
                 UEResourceController.LoadStaticAssets();
                 EMES18Optic.LoadStaticAssets();
+                UEResourceController.PrewarmMenuVanillaDonors();
             }
 
             if (UECommonUtil.IsMenuScene(sceneName)) return;

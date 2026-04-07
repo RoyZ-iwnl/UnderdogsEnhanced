@@ -48,6 +48,23 @@ namespace UnderdogsEnhanced
             }
         }
 
+        internal static void ResetSceneState()
+        {
+            foreach (AmmoBundle bundle in bundleCache.Values)
+            {
+                try
+                {
+                    if (bundle?.Ammo?.VisualModel != null)
+                        UnityEngine.Object.Destroy(bundle.Ammo.VisualModel);
+                }
+                catch
+                {
+                }
+            }
+
+            bundleCache.Clear();
+        }
+
         internal static bool TryApply(Vehicle vehicle, string ammoType)
         {
             if (string.IsNullOrEmpty(ammoType) || string.Equals(ammoType, "Default", StringComparison.OrdinalIgnoreCase))
@@ -77,13 +94,14 @@ namespace UnderdogsEnhanced
 
                 loadoutManager.LoadedAmmoList.AmmoClips[i] = bundle.ClipCodex;
 
-                // 弹药应用完整流程
+                // 参考 PIL：先清空所有 rack，再重建 loadout，避免沿用上一关/上一套弹药残留的可视化状态。
+                UECommonUtil.EmptyAllLoadoutRacks(loadoutManager);
                 UECommonUtil.ClearAmmoInBreech(weapon?.Feed);
                 UECommonUtil.RespawnLoadout(loadoutManager);
                 UECommonUtil.RestartFeed(weapon?.Feed);
                 loadoutManager.RegisterAllBallistics();
 
-                MelonLogger.Msg($"[Leopard1Ammo] {vehicle.FriendlyName} {ammoType}已应用: {donorAmmo.Name} -> {bundle.Ammo.Name}");
+                //MelonLogger.Msg($"[Leopard1Ammo] {vehicle.FriendlyName} {ammoType}: {donorAmmo.Name} -> {bundle.Ammo.Name}");
 
                 return true;
             }
@@ -127,11 +145,20 @@ namespace UnderdogsEnhanced
             // 缓存 key = "{ammoType}_{familyKey}"，例如 "DM33_DM23"
             string cacheKey = $"{ammoType}_{familyKey}";
 
-            if (bundleCache.TryGetValue(cacheKey, out AmmoBundle existingBundle) && existingBundle != null)
+            if (bundleCache.TryGetValue(cacheKey, out AmmoBundle existingBundle) && IsBundleUsable(existingBundle))
                 return existingBundle;
+
+            if (existingBundle != null)
+                bundleCache.Remove(cacheKey);
 
             if (!ammoParams.TryGetValue(ammoType, out var params_))
                 return null;
+
+            if (donorAmmo.VisualModel == null)
+            {
+                MelonLogger.Warning($"[UE Ammo] Skip Leopard ammo bundle rebuild for {ammoType}: donor visual model missing ({donorAmmo.Name})");
+                return null;
+            }
 
             AmmoBundle bundle = new AmmoBundle();
             bundle.OriginalAmmo = donorAmmo;
@@ -173,6 +200,16 @@ namespace UnderdogsEnhanced
 
             bundleCache[cacheKey] = bundle;
             return bundle;
+        }
+
+        private static bool IsBundleUsable(AmmoBundle bundle)
+        {
+            return bundle != null
+                && bundle.Ammo != null
+                && bundle.ClipCodex != null
+                && bundle.AmmoCodex != null
+                && bundle.Clip != null
+                && bundle.Ammo.VisualModel != null;
         }
     }
 }

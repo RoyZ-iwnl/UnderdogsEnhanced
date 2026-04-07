@@ -47,26 +47,8 @@ namespace UnderdogsEnhanced
         // 3. 在 LoadDynamicAssets() 中放置来自捐赠源的运行时引用或克隆的仅运行时对象。
         // 4. 在 UnloadDynamicAssets() 中销毁仅运行时对象。
         // 5. 保持 getter 无副作用：场景生命周期先加载，调用者仅消费结果。
-        private sealed class SceneVanillaDonorPrewarmRule
-        {
-            public string SceneName;
-            public string LogLabel;
-            public string[] CandidateNames;
-            public string[] ProbePaths;
-        }
-
         private static readonly Dictionary<string, UEResourceModule> modules = new Dictionary<string, UEResourceModule>(StringComparer.OrdinalIgnoreCase);
         private static readonly List<UEResourceModule> moduleLoadOrder = new List<UEResourceModule>();
-        private static readonly SceneVanillaDonorPrewarmRule[] sceneVanillaDonorPrewarmRules = new[]
-        {
-            new SceneVanillaDonorPrewarmRule
-            {
-                SceneName = "TR01_showcase",
-                LogLabel = "TR01_showcase EMES18 Marder donor",
-                CandidateNames = new[] { "Marder1A1", "Marder 1A1", "Marder A1+", "MarderA1", "MARDERA1", "MARDERA1PLUS", "MARDER1A2" },
-                ProbePaths = new[] { "Marder1A1_rig/hull/turret/FLIR", "FLIR", "Marder1A1_rig/hull/turret/PERI Z11", "PERI Z11" }
-            }
-        };
         private static bool initialized = false;
         private static UESharedVanillaAssetsModule sharedVanillaAssets;
         private static UEOpticsAssetsModule opticsAssets;
@@ -118,39 +100,38 @@ namespace UnderdogsEnhanced
                 if (module != null && module.TryUnloadDynamicAssets())
                     MelonLogger.Msg("UE dynamic assets unloaded from module: " + module.Id);
             }
-
-            UEAssetUtil.ReleaseVanillaAssets();
         }
 
         internal static void PrewarmCommonVanillaDonors()
         {
             Initialize();
 
-            UEAssetUtil.PrewarmVanillaVehicle(
-                "EMES18 Marder donor",
-                new[] { "Marder1A1", "Marder 1A1", "Marder A1+", "MarderA1", "MARDERA1", "MARDERA1PLUS", "MARDER1A2" },
-                new[] { "Marder1A1_rig/hull/turret/FLIR", "FLIR", "Marder1A1_rig/hull/turret/PERI Z11", "PERI Z11" });
+            UEAssetUtil.PrewarmVanillaVehicle("MARDER1A2", new[] { "Marder1A1_rig/hull/turret/FLIR", "FLIR", "Marder1A1_rig/hull/turret/PERI Z11", "PERI Z11" });
+        }
+
+        internal static void PrewarmMenuVanillaDonors()
+        {
+            Initialize();
+
+            UEAssetUtil.PrewarmVanillaVehicle("MARDER1A2", new[] { "Marder1A1_rig/hull/turret/FLIR", "FLIR", "Marder1A1_rig/hull/turret/PERI Z11", "PERI Z11" });
+            UEAssetUtil.PrewarmVanillaVehicle("M60A3TTS", new[] { "Turret Scripts/Sights/FLIR", "Turret Scripts/Sights/FLIR/FLIR Post Processing - Green" });
+            UEAssetUtil.PrewarmVanillaVehicle("M1IP", new[] { "Turret Scripts/GPS/Optic/Abrams GPS canvas" });
         }
 
         internal static void PrewarmSceneSpecificVanillaDonors(string sceneName)
         {
             Initialize();
 
-            if (string.IsNullOrWhiteSpace(sceneName) || sceneVanillaDonorPrewarmRules == null)
-                return;
-
-            for (int i = 0; i < sceneVanillaDonorPrewarmRules.Length; i++)
+            if (string.Equals(sceneName, "TR01_showcase", StringComparison.OrdinalIgnoreCase))
             {
-                SceneVanillaDonorPrewarmRule rule = sceneVanillaDonorPrewarmRules[i];
-                if (rule == null || string.IsNullOrWhiteSpace(rule.SceneName))
-                    continue;
-
-                // 场景匹配后才执行预热
-                if (!string.Equals(sceneName, rule.SceneName, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                UEAssetUtil.PrewarmVanillaVehicle(rule.LogLabel, rule.CandidateNames, rule.ProbePaths);
+                UEAssetUtil.PrewarmVanillaVehicle("MARDER1A2", new[] { "Marder1A1_rig/hull/turret/FLIR", "FLIR", "Marder1A1_rig/hull/turret/PERI Z11", "PERI Z11" });
             }
+        }
+
+        internal static void ReleaseVanillaDonorAssets()
+        {
+            Initialize();
+            UEAssetUtil.ReleaseVanillaAssets();
         }
 
         internal static GameObject GetLimitedLrfRangeReadoutTemplate()
@@ -386,7 +367,6 @@ namespace UnderdogsEnhanced
                 text.text = string.Empty;
             }
 
-            MelonLogger.Msg("[Assets] SharedVanillaAssets Dynamic Loaded");
         }
 
         protected override void UnloadDynamicAssets()
@@ -461,7 +441,6 @@ namespace UnderdogsEnhanced
                 L1a5Prefab.hideFlags = HideFlags.DontUnloadUnusedAsset;
             }
 
-            MelonLogger.Msg($"[UE][Assets] EMES18 bundle loaded (Emes18={Emes18MonitorPrefab?.name}, L1a5={L1a5Prefab?.name}).");
         }
 
         protected override void LoadDynamicAssets()
@@ -485,7 +464,6 @@ namespace UnderdogsEnhanced
                 ThermalFlirWhiteBlitMaterialNoScope = CreateWhiteNoScopeFlirMaterial(ThermalFlirBlitMaterial, ref whiteHotRampTexture);
 
             MissileReticleTemplate = BuildMissileReticleTemplate();
-            MelonLogger.Msg("[Assets] Optics dynamic assets loaded.");
         }
 
         protected override void UnloadDynamicAssets()

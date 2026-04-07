@@ -497,13 +497,45 @@ namespace UnderdogsEnhanced
             }
         }
 
-        private static void RepairAmmoFeeds(GameObject go)
+        private static void RepairAmmoFeeds(GameObject go, HashSet<object> repairedInstances = null)
         {
             if (go == null) return;
-            var ammoFeeds = go.GetComponents<AmmoFeed>();
-            if (ammoFeeds == null) return;
+
+            var ammoFeeds = go.GetComponentsInChildren<AmmoFeed>(true);
+            if (ammoFeeds == null || ammoFeeds.Length == 0) return;
+
             foreach (var ammoFeed in ammoFeeds)
-                ammoFeed._loaderIncapacitated = false;
+            {
+                if (ammoFeed == null) continue;
+                if (repairedInstances != null && !repairedInstances.Add(ammoFeed)) continue;
+                RepairAmmoFeed(ammoFeed);
+            }
+        }
+
+        private static void RepairCrewServedWeapons(GameObject go, HashSet<object> repairedInstances = null)
+        {
+            if (go == null) return;
+
+            var mainGuns = go.GetComponentsInChildren<MainGun>(true);
+            if (mainGuns != null)
+            {
+                foreach (var mainGun in mainGuns)
+                {
+                    if (mainGun == null) continue;
+                    if (repairedInstances != null && !repairedInstances.Add(mainGun)) continue;
+                    RepairMainGun(mainGun);
+                }
+            }
+
+            var missileLaunchers = go.GetComponentsInChildren<MissileLauncher>(true);
+            if (missileLaunchers == null) return;
+
+            foreach (var missileLauncher in missileLaunchers)
+            {
+                if (missileLauncher == null) continue;
+                if (repairedInstances != null && !repairedInstances.Add(missileLauncher)) continue;
+                RepairMissileLauncher(missileLauncher);
+            }
         }
 
         private static void RepairCrewMembers(Vehicle vehicle, GameObject go)
@@ -568,7 +600,10 @@ namespace UnderdogsEnhanced
             crewManager._someoneEvacuated = false;
 
             if (go != null)
+            {
                 RepairAmmoFeeds(go);
+                RepairCrewServedWeapons(go);
+            }
 
             RefreshPlayerDamageUi();
             UnderdogsDebug.LogRepair("[Repair] Crew healed");
@@ -661,7 +696,8 @@ namespace UnderdogsEnhanced
                 RepairUtils.RepairDamageSourcesByType<FireControlSystem>(go, repairedInstances);
                 RepairUtils.RepairDamageSourcesByType<FlammablesManager>(go, repairedInstances);
                 RepairUtils.RepairDamageSourcesByType<AimablePlatform>(go, repairedInstances);
-                RepairUtils.RepairDamageSourcesByType<AmmoFeed>(go, repairedInstances);
+                RepairAmmoFeeds(go, repairedInstances);
+                RepairCrewServedWeapons(go, repairedInstances);
                 RepairUtils.RepairDamageSourcesByType<CameraSlot>(go, repairedInstances);
                 RepairUtils.RepairDamageSourcesByType<MissileGuidanceUnit>(go, repairedInstances);
                 RepairUtils.RepairDamageSourcesByType<LightBandExclusiveItem>(go, repairedInstances);
@@ -744,8 +780,61 @@ namespace UnderdogsEnhanced
             af._loaderIncapacitated = false;
             af._autoloaderDestroyed = false;
             RepairUtils.RepairDestructibleComponent(af.Autoloader);
+            af.ForcePauseReload = false;
+            af.WaitingOnMissile = false;
             af.Reloading = false;
             af.Cycling = false;
+
+            RepairUtils.SetField(af, "_clipFeedTime", 0f);
+            RepairUtils.SetField(af, "_roundFeedTime", 0f);
+            RepairUtils.SetField(af, "_clipFeedStage", 0);
+            RepairUtils.SetField(af, "_roundFeedStage", 0);
+
+            var roundCycleStages = RepairUtils.GetMemberValue(af, "RoundCycleStages");
+            if (roundCycleStages != null)
+                RepairUtils.InvokeMethod(af, "CalculateTotalTime", roundCycleStages, true);
+            else
+                RepairUtils.SetField(af, "_totalCycleTime", 0f);
+
+            var clipReloadStages = RepairUtils.GetMemberValue(af, "ClipReloadStages");
+            if (clipReloadStages != null)
+                RepairUtils.InvokeMethod(af, "CalculateTotalTime", clipReloadStages, false);
+            else
+                RepairUtils.SetField(af, "_totalReloadTime", 0f);
+        }
+
+        private static void RepairMainGun(MainGun gun)
+        {
+            if (gun == null) return;
+
+            var loaderDamaged = gun._loaderDamaged;
+            if (loaderDamaged)
+            {
+                gun.MinReloadTime = Mathf.Max(0f, gun.MinReloadTime - 10f);
+                gun.MaxReloadTime = Mathf.Max(0f, gun.MaxReloadTime - 10f);
+                RepairUtils.SetField(gun, "_reloadTimeRemaining", Mathf.Max(0f, gun.ReloadTimeRemaining - 10f));
+                if (RepairUtils.GetMemberValue(gun, "_currentReloadTime") is float currentReloadTime)
+                    RepairUtils.SetField(gun, "_currentReloadTime", Mathf.Max(0f, currentReloadTime - 10f));
+            }
+
+            gun._loaderDamaged = false;
+        }
+
+        private static void RepairMissileLauncher(MissileLauncher launcher)
+        {
+            if (launcher == null) return;
+
+            var loaderDamaged = launcher._loaderDamaged;
+            if (loaderDamaged)
+            {
+                launcher.MinReloadTime = Mathf.Max(0f, launcher.MinReloadTime - 10f);
+                launcher.MaxReloadTime = Mathf.Max(0f, launcher.MaxReloadTime - 10f);
+                RepairUtils.SetField(launcher, "_reloadTimeRemaining", Mathf.Max(0f, launcher.ReloadTimeRemaining - 10f));
+                if (RepairUtils.GetMemberValue(launcher, "_currentReloadTime") is float currentReloadTime)
+                    RepairUtils.SetField(launcher, "_currentReloadTime", Mathf.Max(0f, currentReloadTime - 10f));
+            }
+
+            launcher._loaderDamaged = false;
         }
 
         private static void RepairCameraSlot(CameraSlot cs)
@@ -841,6 +930,28 @@ namespace UnderdogsEnhanced
             RepairUtils.SetField(vehicle, "_gunnerInjured", false);
             RepairUtils.SetField(vehicle, "_loaderInjured", false);
             RepairUtils.SetField(vehicle, "_commanderInjured", false);
+
+            var vehicleInfo = RepairUtils.GetVehicleInfo(vehicle);
+            if (vehicleInfo != null)
+            {
+                RepairUtils.SetMemberValue(vehicleInfo, "DamageStatus", string.Empty);
+                RepairUtils.SetField(vehicleInfo, "_damageStatus", string.Empty);
+                RepairUtils.SetMemberValue(vehicleInfo, "StatusMessages", string.Empty);
+                RepairUtils.SetField(vehicleInfo, "_statusMessage", string.Empty);
+                RepairUtils.SetField(vehicleInfo, "_statusMessages", string.Empty);
+                RepairUtils.SetField(vehicleInfo, "<Neutralized>k__BackingField", false);
+                RepairUtils.SetField(vehicleInfo, "_neutralized", false);
+                RepairUtils.SetField(vehicleInfo, "<UnitIncapacitated>k__BackingField", false);
+                RepairUtils.SetField(vehicleInfo, "_unitIncapacitated", false);
+                RepairUtils.SetField(vehicleInfo, "_immobilized", false);
+                RepairUtils.SetMemberValue(vehicleInfo, "IsImmobilized", false);
+                RepairUtils.SetField(vehicleInfo, "_isParked", false);
+                RepairUtils.SetMemberValue(vehicleInfo, "Parked", false);
+                RepairUtils.SetField(vehicleInfo, "_driverInjured", false);
+                RepairUtils.SetField(vehicleInfo, "_gunnerInjured", false);
+                RepairUtils.SetField(vehicleInfo, "_loaderInjured", false);
+                RepairUtils.SetField(vehicleInfo, "_commanderInjured", false);
+            }
 
             var drivableChassis = RepairUtils.GetDrivableChassis(vehicle, go) as DrivableChassis;
             if (drivableChassis != null)

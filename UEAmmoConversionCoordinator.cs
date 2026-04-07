@@ -16,6 +16,7 @@ namespace UnderdogsEnhanced
         internal static void ResetSceneState()
         {
             AppliedVehicleIds.Clear();
+            Leopard1Ammo.ResetSceneState();
         }
 
         internal static IEnumerator EnsureAmmoConversionsOnGameReady(GameState _, string sceneName)
