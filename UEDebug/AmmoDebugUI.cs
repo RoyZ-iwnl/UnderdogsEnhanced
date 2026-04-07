@@ -1,3 +1,4 @@
+#if DEBUG
 using MelonLoader;
 using UnityEngine;
 using System.Collections.Generic;
@@ -16,13 +17,8 @@ namespace UnderdogsEnhanced
         private Vector2 _scrollPos = Vector2.zero;
         private readonly Dictionary<string, string> _inputTexts = new Dictionary<string, string>();
 
-        private enum AmmoCategory { BMP1Missile, Leopard1APFSDS }
+        private enum AmmoCategory { BMP1Missile }
         private AmmoCategory _currentType = AmmoCategory.BMP1Missile;
-
-        // Leopard1 参数
-        private float _leo_rhaPen = Leopard1Ammo.DEFAULT_RHA_PENETRATION;
-        private float _leo_muzzleVel = Leopard1Ammo.DEFAULT_MUZZLE_VELOCITY;
-        private float _leo_mass = Leopard1Ammo.DEFAULT_MASS;
 
         // BMP1 飞行参数
         private float _bmp_spiralPower = BMP1MCLOSAmmo.DEFAULT_SPIRAL_POWER;
@@ -71,23 +67,14 @@ namespace UnderdogsEnhanced
             GUILayout.BeginVertical();
 
             GUILayout.Label("弹药类型:");
-            _currentType = (AmmoCategory)GUILayout.SelectionGrid((int)_currentType, new string[] { "BMP-1导弹", "豹1穿甲弹" }, 2);
+            _currentType = (AmmoCategory)GUILayout.SelectionGrid((int)_currentType, new string[] { "BMP-1导弹" }, 1);
 
             GUILayout.Space(10);
             _scrollPos = GUILayout.BeginScrollView(_scrollPos, false, true, GUILayout.Height(450));
 
-            if (_currentType == AmmoCategory.Leopard1APFSDS)
-            {
-                DrawOriginalVsCurrent_Leo();
-                GUILayout.Space(10);
-                DrawLeopard1Params();
-            }
-            else
-            {
-                DrawOriginalVsCurrent_BMP();
-                GUILayout.Space(10);
-                DrawBMP1Params();
-            }
+            DrawOriginalVsCurrent_BMP();
+            GUILayout.Space(10);
+            DrawBMP1Params();
 
             GUILayout.EndScrollView();
 
@@ -99,21 +86,6 @@ namespace UnderdogsEnhanced
 
             GUILayout.EndVertical();
             GUI.DragWindow();
-        }
-
-        void DrawOriginalVsCurrent_Leo()
-        {            
-            if (Leopard1Ammo.ammo_dm63 != null)
-            {
-                GUILayout.Label("<b>=== DM63当前属性 ===</b>", new GUIStyle(GUI.skin.label) { richText = true });
-                DrawAmmoTypeAllProperties(Leopard1Ammo.ammo_dm63);
-            }
-            if (Leopard1Ammo.ammo_original != null)
-            {
-                GUILayout.Label("<b>=== 原版弹药属性 ===</b>", new GUIStyle(GUI.skin.label) { richText = true });
-                DrawAmmoTypeAllProperties(Leopard1Ammo.ammo_original);
-                GUILayout.Space(10);
-            }
         }
 
         void DrawAmmoTypeAllProperties(AmmoType ammo)
@@ -166,15 +138,7 @@ namespace UnderdogsEnhanced
                 GUILayout.Label("<b>=== 原版9M14导弹属性 ===</b>", new GUIStyle(GUI.skin.label) { richText = true });
                 DrawAmmoTypeAllProperties(BMP1MCLOSAmmo.ammo_9m14_original);
                 GUILayout.Space(10);
-            }            
-        }
-
-        void DrawLeopard1Params()
-        {
-            GUILayout.Label("<b>豹1 DM63参数</b>", new GUIStyle(GUI.skin.label) { richText = true });
-            _leo_rhaPen = LabeledSlider("leo_rha", "穿深(mm)", _leo_rhaPen, 300f, 600f);
-            _leo_muzzleVel = LabeledSlider("leo_vel", "初速(m/s)", _leo_muzzleVel, 1200f, 1800f);
-            _leo_mass = LabeledSlider("leo_mass", "质量(kg)", _leo_mass, 3f, 6f);
+            }
         }
 
         void DrawBMP1Params()
@@ -213,52 +177,33 @@ namespace UnderdogsEnhanced
 
         void ApplyParams()
         {
-            if (_currentType == AmmoCategory.Leopard1APFSDS)
-            {
-                Leopard1Ammo.Debug_RhaPenetration = _leo_rhaPen;
-                Leopard1Ammo.Debug_MuzzleVelocity = _leo_muzzleVel;
-                Leopard1Ammo.Debug_Mass = _leo_mass;
-                Leopard1Ammo.ApplyDebugParams();
-                MelonLogger.Msg($"[AmmoDebugUI] 豹1参数已应用");
-            }
-            else
-            {
-                BMP1MCLOSAmmo.SetDebugParams(_bmp_spiralPower, _bmp_spiralAngularRate, _bmp_maximumRange,
-                    _bmp_noisePowerX, _bmp_noisePowerY, _bmp_noiseTimeScale, _bmp_turnSpeed,
-                    _bmp_tntEquivalent, _bmp_rhaPen, _bmp_maxSpallRha, _bmp_minSpallRha,
-                    _bmp_spallMultiplier, _bmp_rangedFuseTime, _bmp_rhaToFuse, _bmp_muzzleVel, _bmp_mass);
-                MelonLogger.Msg($"[AmmoDebugUI] BMP-1参数已应用");
-            }
+            BMP1MCLOSAmmo.SetDebugParams(_bmp_spiralPower, _bmp_spiralAngularRate, _bmp_maximumRange,
+                _bmp_noisePowerX, _bmp_noisePowerY, _bmp_noiseTimeScale, _bmp_turnSpeed,
+                _bmp_tntEquivalent, _bmp_rhaPen, _bmp_maxSpallRha, _bmp_minSpallRha,
+                _bmp_spallMultiplier, _bmp_rangedFuseTime, _bmp_rhaToFuse, _bmp_muzzleVel, _bmp_mass);
+            MelonLogger.Msg($"[AmmoDebugUI] BMP-1参数已应用");
         }
 
         void ResetParams()
         {
-            if (_currentType == AmmoCategory.Leopard1APFSDS)
-            {
-                _leo_rhaPen = Leopard1Ammo.DEFAULT_RHA_PENETRATION;
-                _leo_muzzleVel = Leopard1Ammo.DEFAULT_MUZZLE_VELOCITY;
-                _leo_mass = Leopard1Ammo.DEFAULT_MASS;
-            }
-            else
-            {
-                _bmp_spiralPower = BMP1MCLOSAmmo.DEFAULT_SPIRAL_POWER;
-                _bmp_spiralAngularRate = BMP1MCLOSAmmo.DEFAULT_SPIRAL_ANGULAR_RATE;
-                _bmp_maximumRange = BMP1MCLOSAmmo.DEFAULT_MAXIMUM_RANGE;
-                _bmp_noisePowerX = BMP1MCLOSAmmo.DEFAULT_NOISE_POWER_X;
-                _bmp_noisePowerY = BMP1MCLOSAmmo.DEFAULT_NOISE_POWER_Y;
-                _bmp_noiseTimeScale = BMP1MCLOSAmmo.DEFAULT_NOISE_TIME_SCALE;
-                _bmp_turnSpeed = BMP1MCLOSAmmo.DEFAULT_TURN_SPEED;
-                _bmp_tntEquivalent = BMP1MCLOSAmmo.DEFAULT_TNT_EQUIVALENT;
-                _bmp_rhaPen = BMP1MCLOSAmmo.DEFAULT_RHA_PENETRATION;
-                _bmp_maxSpallRha = BMP1MCLOSAmmo.DEFAULT_MAX_SPALL_RHA;
-                _bmp_minSpallRha = BMP1MCLOSAmmo.DEFAULT_MIN_SPALL_RHA;
-                _bmp_spallMultiplier = BMP1MCLOSAmmo.DEFAULT_SPALL_MULTIPLIER;
-                _bmp_rangedFuseTime = BMP1MCLOSAmmo.DEFAULT_RANGED_FUSE_TIME;
-                _bmp_rhaToFuse = BMP1MCLOSAmmo.DEFAULT_RHA_TO_FUSE;
-                _bmp_muzzleVel = BMP1MCLOSAmmo.DEFAULT_MUZZLE_VELOCITY;
-                _bmp_mass = BMP1MCLOSAmmo.DEFAULT_MASS;
-            }
+            _bmp_spiralPower = BMP1MCLOSAmmo.DEFAULT_SPIRAL_POWER;
+            _bmp_spiralAngularRate = BMP1MCLOSAmmo.DEFAULT_SPIRAL_ANGULAR_RATE;
+            _bmp_maximumRange = BMP1MCLOSAmmo.DEFAULT_MAXIMUM_RANGE;
+            _bmp_noisePowerX = BMP1MCLOSAmmo.DEFAULT_NOISE_POWER_X;
+            _bmp_noisePowerY = BMP1MCLOSAmmo.DEFAULT_NOISE_POWER_Y;
+            _bmp_noiseTimeScale = BMP1MCLOSAmmo.DEFAULT_NOISE_TIME_SCALE;
+            _bmp_turnSpeed = BMP1MCLOSAmmo.DEFAULT_TURN_SPEED;
+            _bmp_tntEquivalent = BMP1MCLOSAmmo.DEFAULT_TNT_EQUIVALENT;
+            _bmp_rhaPen = BMP1MCLOSAmmo.DEFAULT_RHA_PENETRATION;
+            _bmp_maxSpallRha = BMP1MCLOSAmmo.DEFAULT_MAX_SPALL_RHA;
+            _bmp_minSpallRha = BMP1MCLOSAmmo.DEFAULT_MIN_SPALL_RHA;
+            _bmp_spallMultiplier = BMP1MCLOSAmmo.DEFAULT_SPALL_MULTIPLIER;
+            _bmp_rangedFuseTime = BMP1MCLOSAmmo.DEFAULT_RANGED_FUSE_TIME;
+            _bmp_rhaToFuse = BMP1MCLOSAmmo.DEFAULT_RHA_TO_FUSE;
+            _bmp_muzzleVel = BMP1MCLOSAmmo.DEFAULT_MUZZLE_VELOCITY;
+            _bmp_mass = BMP1MCLOSAmmo.DEFAULT_MASS;
             ApplyParams();
         }
     }
 }
+#endif

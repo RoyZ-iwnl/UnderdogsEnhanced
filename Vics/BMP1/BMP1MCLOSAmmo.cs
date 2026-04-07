@@ -4,7 +4,6 @@ using GHPC.Weaponry;
 using GHPC.Vehicle;
 using MelonLoader;
 using UnityEngine;
-using System.Reflection;
 
 namespace UnderdogsEnhanced
 {
@@ -43,6 +42,7 @@ namespace UnderdogsEnhanced
         public static AmmoType ammo_9m14_original = null;
         static AmmoType.AmmoClip clip_9m14_mclos = null;
         static AmmoCodexScriptable ammo_codex_9m14_mclos = null;
+        static AmmoClipCodexScriptable clip_codex_9m14_mclos = null;
         static MissileParamSnapshot originalParams;
         static bool hasOriginalParams = false;
         static float turnSpeedBaseline = 0.5f;
@@ -328,8 +328,9 @@ namespace UnderdogsEnhanced
 
             if (ammo_9m14_mclos == null)
             {
-                if (UnderdogsDebug.DEBUG_MODE)
-                    MelonLogger.Warning("[BMP-1 MCLOS] 弹药初始化失败，跳过参数调整");
+#if DEBUG
+                MelonLogger.Warning("[BMP-1 MCLOS] 弹药初始化失败，跳过参数调整");
+#endif
                 return;
             }
 
@@ -337,41 +338,30 @@ namespace UnderdogsEnhanced
             {
                 var rack = atgm_ws.Feed.ReadyRack;
 
-                rack.ClipTypes[0] = clip_9m14_mclos;
+                int oldCount = rack.StoredClips != null ? System.Math.Max(rack.StoredClips.Count, 1) : 1;
+                int count = oldCount;
+                if (Bmp1Main.bmp1_mclos_ready_count != null && Bmp1Main.bmp1_mclos_ready_count.Value > 0)
+                    count = Mathf.Clamp(Bmp1Main.bmp1_mclos_ready_count.Value, 1, 64);
 
-                // 用反射设置 StoredClips
-                var storedClipsProp = typeof(GHPC.Weapons.AmmoRack).GetProperty("StoredClips");
-                if (storedClipsProp != null)
+                LoadoutManager loadoutManager = vic != null ? vic.GetComponent<LoadoutManager>() : null;
+                if (count <= 1 && loadoutManager?.TotalAmmoCounts != null)
                 {
-                    var oldClips = storedClipsProp.GetValue(rack) as List<AmmoType.AmmoClip>;
-                    int oldCount = oldClips != null ? System.Math.Max(oldClips.Count, 1) : 1;
-                    int count = oldCount;
-                    if (UnderdogsEnhancedMod.bmp1_mclos_ready_count != null && UnderdogsEnhancedMod.bmp1_mclos_ready_count.Value > 0)
-                        count = Mathf.Clamp(UnderdogsEnhancedMod.bmp1_mclos_ready_count.Value, 1, 64);
-                    var newClips = new List<AmmoType.AmmoClip>();
-                    for (int i = 0; i < count; i++)
-                        newClips.Add(clip_9m14_mclos);
-                    storedClipsProp.SetValue(rack, newClips);
-                }
-                else
-                {
-                    if (UnderdogsDebug.DEBUG_MODE)
-                        MelonLogger.Warning("[BMP-1 MCLOS] StoredClips 属性未找到，回退到 Awake 模式");
-                    rack.Awake();
+                    int oldIndex = UECommonUtil.FindLoadedAmmoClipIndex(loadoutManager, clipCodex =>
+                    {
+                        AmmoType ammo = clipCodex?.ClipType?.MinimalPattern != null && clipCodex.ClipType.MinimalPattern.Length > 0
+                            ? clipCodex.ClipType.MinimalPattern[0]?.AmmoType
+                            : null;
+                        return ammo != null && IsOriginalMissileName(ammo.Name);
+                    });
+
+                    if (oldIndex >= 0 && oldIndex < loadoutManager.TotalAmmoCounts.Length)
+                        count = System.Math.Max(count, loadoutManager.TotalAmmoCounts[oldIndex]);
                 }
 
-                // AmmoTypeInBreech setter 不可访问，用反射清空
-                var breechProp = typeof(GHPC.Weapons.AmmoFeed).GetProperty("AmmoTypeInBreech", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                if (breechProp != null)
-                    breechProp.SetValue(atgm_ws.Feed, null);
+                int preloadClipCount = count + 1;
 
-                // Feed.Start() 也不可访问，用反射调用
-                var startMethod = typeof(GHPC.Weapons.AmmoFeed).GetMethod("Start", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                if (startMethod != null)
-                    startMethod.Invoke(atgm_ws.Feed, null);
-
-                if (UnderdogsDebug.DEBUG_MODE)
-                    MelonLogger.Msg("[BMP-1 MCLOS] Apply 完成");
+                UECommonUtil.ReplaceReadyRack(rack, clip_9m14_mclos, preloadClipCount);
+                UECommonUtil.RefreshLauncherFeed(atgm_ws.Feed);
             }
             catch (System.Exception e)
             {
@@ -397,20 +387,19 @@ namespace UnderdogsEnhanced
             hasOriginalParams = true;
 
             // 打印原始参数值
-            if (UnderdogsDebug.DEBUG_MODE)
-            {
-                MelonLogger.Msg($"[BMP-1 MCLOS] 原始参数:");
-                MelonLogger.Msg($"  SpiralPower={orig.SpiralPower}, SpiralAngularRate={orig.SpiralAngularRate}");
-                MelonLogger.Msg($"  MaximumRange={orig.MaximumRange}");
-                MelonLogger.Msg($"  NoisePowerX={orig.NoisePowerX}, NoisePowerY={orig.NoisePowerY}, NoiseTimeScale={orig.NoiseTimeScale}");
-                MelonLogger.Msg($"  TurnSpeed={orig.TurnSpeed}");
-                MelonLogger.Msg($"  TntEquivalentKg={orig.TntEquivalentKg}, RhaPenetration={orig.RhaPenetration}");
-                MelonLogger.Msg($"  RangedFuseTime={orig.RangedFuseTime}, RhaToFuse={orig.RhaToFuse}, MuzzleVelocity={orig.MuzzleVelocity}, Mass={orig.Mass}");
-            }
+#if DEBUG
+            MelonLogger.Msg($"[BMP-1 MCLOS] 原始参数:");
+            MelonLogger.Msg($"  SpiralPower={orig.SpiralPower}, SpiralAngularRate={orig.SpiralAngularRate}");
+            MelonLogger.Msg($"  MaximumRange={orig.MaximumRange}");
+            MelonLogger.Msg($"  NoisePowerX={orig.NoisePowerX}, NoisePowerY={orig.NoisePowerY}, NoiseTimeScale={orig.NoiseTimeScale}");
+            MelonLogger.Msg($"  TurnSpeed={orig.TurnSpeed}");
+            MelonLogger.Msg($"  TntEquivalentKg={orig.TntEquivalentKg}, RhaPenetration={orig.RhaPenetration}");
+            MelonLogger.Msg($"  RangedFuseTime={orig.RangedFuseTime}, RhaToFuse={orig.RhaToFuse}, MuzzleVelocity={orig.MuzzleVelocity}, Mass={orig.Mass}");
+#endif
 
             // 创建改进型导弹
             ammo_9m14_mclos = new AmmoType();
-            ShallowCopy(ammo_9m14_mclos, orig);
+            UECommonUtil.ShallowCopy(ammo_9m14_mclos, orig);
 
             // === 导弹命名 ===
             ammo_9m14_mclos.Name = MISSILE_NAME;
@@ -448,24 +437,17 @@ namespace UnderdogsEnhanced
             // 创建弹夹 - 保持原有容量
             var origClip = atgm_ws.Feed.ReadyRack.ClipTypes[0];
             clip_9m14_mclos = new AmmoType.AmmoClip();
-            ShallowCopyClip(clip_9m14_mclos, origClip);
+            UECommonUtil.ShallowCopy(clip_9m14_mclos, origClip);
             clip_9m14_mclos.Name = MISSILE_NAME;
             clip_9m14_mclos.MinimalPattern = new AmmoCodexScriptable[] { ammo_codex_9m14_mclos };
 
-            if (UnderdogsDebug.DEBUG_MODE)
-                MelonLogger.Msg($"[BMP-1 MCLOS] 导弹初始化完成: {MISSILE_NAME}");
-        }
+            clip_codex_9m14_mclos = ScriptableObject.CreateInstance<AmmoClipCodexScriptable>();
+            clip_codex_9m14_mclos.ClipType = clip_9m14_mclos;
+            clip_codex_9m14_mclos.name = "clip_9m14_mclos";
 
-        static void ShallowCopy(AmmoType dst, AmmoType src)
-        {
-            foreach (var f in typeof(AmmoType).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
-                f.SetValue(dst, f.GetValue(src));
-        }
-
-        static void ShallowCopyClip(AmmoType.AmmoClip dst, AmmoType.AmmoClip src)
-        {
-            foreach (var f in typeof(AmmoType.AmmoClip).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
-                f.SetValue(dst, f.GetValue(src));
+#if DEBUG
+            MelonLogger.Msg($"[BMP-1 MCLOS] 导弹初始化完成: {MISSILE_NAME}");
+#endif
         }
     }
 }

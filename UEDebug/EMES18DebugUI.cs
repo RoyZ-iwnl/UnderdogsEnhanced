@@ -1,3 +1,4 @@
+#if DEBUG
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -109,29 +110,29 @@ namespace UnderdogsEnhanced
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label($"NormalizeScope: {(EMES18DebugState.DisableNormalizeScopeSprite ? "OFF" : "ON")}", GUILayout.Width(170));
-            if (GUILayout.Button(EMES18DebugState.DisableNormalizeScopeSprite ? "Enable NormalizeScope" : "Disable NormalizeScope", GUILayout.Width(180)))
+            GUILayout.Label($"NormalizeScope: {(EMES18Optic.DebugDisableNormalizeScopeSprite ? "OFF" : "ON")}", GUILayout.Width(170));
+            if (GUILayout.Button(EMES18Optic.DebugDisableNormalizeScopeSprite ? "Enable NormalizeScope" : "Disable NormalizeScope", GUILayout.Width(180)))
             {
-                EMES18DebugState.DisableNormalizeScopeSprite = !EMES18DebugState.DisableNormalizeScopeSprite;
-                MelonLoader.MelonLogger.Msg($"[EMES18DBG] NormalizeScope={(EMES18DebugState.DisableNormalizeScopeSprite ? "OFF" : "ON")}");
+                EMES18Optic.DebugDisableNormalizeScopeSprite = !EMES18Optic.DebugDisableNormalizeScopeSprite;
+                MelonLoader.MelonLogger.Msg($"[EMES18DBG] NormalizeScope={(EMES18Optic.DebugDisableNormalizeScopeSprite ? "OFF" : "ON")}");
             }
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label($"ThermalHideScope: {(EMES18DebugState.DisableThermalDefaultScopeHide ? "OFF" : "ON")}", GUILayout.Width(170));
-            if (GUILayout.Button(EMES18DebugState.DisableThermalDefaultScopeHide ? "Enable ThermalHide" : "Disable ThermalHide", GUILayout.Width(180)))
+            GUILayout.Label($"ThermalHideScope: {(EMES18Optic.DebugDisableThermalDefaultScopeHide ? "OFF" : "ON")}", GUILayout.Width(170));
+            if (GUILayout.Button(EMES18Optic.DebugDisableThermalDefaultScopeHide ? "Enable ThermalHide" : "Disable ThermalHide", GUILayout.Width(180)))
             {
-                EMES18DebugState.DisableThermalDefaultScopeHide = !EMES18DebugState.DisableThermalDefaultScopeHide;
-                MelonLoader.MelonLogger.Msg($"[EMES18DBG] ThermalHideScope={(EMES18DebugState.DisableThermalDefaultScopeHide ? "OFF" : "ON")}");
+                EMES18Optic.DebugDisableThermalDefaultScopeHide = !EMES18Optic.DebugDisableThermalDefaultScopeHide;
+                MelonLoader.MelonLogger.Msg($"[EMES18DBG] ThermalHideScope={(EMES18Optic.DebugDisableThermalDefaultScopeHide ? "OFF" : "ON")}");
             }
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label($"DayShowScope: {(EMES18DebugState.DisableDayDefaultScopeShow ? "OFF" : "ON")}", GUILayout.Width(170));
-            if (GUILayout.Button(EMES18DebugState.DisableDayDefaultScopeShow ? "Enable DayShow" : "Disable DayShow", GUILayout.Width(180)))
+            GUILayout.Label($"DayShowScope: {(EMES18Optic.DebugDisableDayDefaultScopeShow ? "OFF" : "ON")}", GUILayout.Width(170));
+            if (GUILayout.Button(EMES18Optic.DebugDisableDayDefaultScopeShow ? "Enable DayShow" : "Disable DayShow", GUILayout.Width(180)))
             {
-                EMES18DebugState.DisableDayDefaultScopeShow = !EMES18DebugState.DisableDayDefaultScopeShow;
-                MelonLoader.MelonLogger.Msg($"[EMES18DBG] DayShowScope={(EMES18DebugState.DisableDayDefaultScopeShow ? "OFF" : "ON")}");
+                EMES18Optic.DebugDisableDayDefaultScopeShow = !EMES18Optic.DebugDisableDayDefaultScopeShow;
+                MelonLoader.MelonLogger.Msg($"[EMES18DBG] DayShowScope={(EMES18Optic.DebugDisableDayDefaultScopeShow ? "OFF" : "ON")}");
             }
             GUILayout.EndHorizontal();
 
@@ -694,3 +695,4 @@ namespace UnderdogsEnhanced
         }
     }
 }
+#endif

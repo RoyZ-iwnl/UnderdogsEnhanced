@@ -16,11 +16,13 @@
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
+    <Optimize>true</Optimize>
     <OutputPath>bin\Debug\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>0162;0168</NoWarn>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x64' ">
     <DebugType>pdbonly</DebugType>
@@ -29,6 +31,8 @@
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>0162;0168</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="0Harmony">
@@ -105,18 +109,62 @@
       <HintPath>E:\SteamLibrary\steamapps\common\Gunner HEAT PC\Bin\GHPC_Data\Managed\UnityEngine.UI.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="Unity.Addressables, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>E:\SteamLibrary\steamapps\common\Gunner HEAT PC\Bin\GHPC_Data\Managed\Unity.Addressables.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.ResourceManager, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>E:\SteamLibrary\steamapps\common\Gunner HEAT PC\Bin\GHPC_Data\Managed\Unity.ResourceManager.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="UnderdogsDebug.cs" />
-    <Compile Include="LimitedLRF.cs" />
     <Compile Include="UnderdogsEnhanced.cs" />
-    <Compile Include="BMP1MissileCamera.cs" />
-    <Compile Include="BMP1MCLOSAmmo.cs" />
-    <Compile Include="AmmoDebugUI.cs" />
-    <Compile Include="Leopard1Ammo.cs" />
-    <Compile Include="EMES18Optic.cs" />
-    <Compile Include="EMES18DebugState.cs" />
-    <Compile Include="EMES18DebugUI.cs" />
+    <Compile Include="UEAmmoConversionCoordinator.cs" />
+    <Compile Include="UECommonUtil.cs" />
+    <Compile Include="UEAssetUtil.cs" />
+    <Compile Include="UEResourceController.cs" />
+    <Compile Include="UEResourceModule.cs" />
+    <Compile Include="LimitedLRF.cs" />
+    <!-- UEDebug -->
+    <Compile Include="UEDebug\UnderdogsDebug.cs" />
+    <Compile Include="UEDebug\AmmoDebugUI.cs" />
+    <Compile Include="UEDebug\EMES18DebugUI.cs" />
+    <Compile Include="UEDebug\FCSDebugUI.cs" />
+    <!-- Vics\BMP1 -->
+    <Compile Include="Vics\BMP1\Bmp1Main.cs" />
+    <Compile Include="Vics\BMP1\BMP1MCLOSAmmo.cs" />
+    <Compile Include="Vics\BMP1\BMP1MissileCamera.cs" />
+    <!-- Vics\Marder -->
+    <Compile Include="Vics\Marder\MarderMain.cs" />
+    <Compile Include="Vics\Leo1\Leopard1Model.cs" />
+    <Compile Include="Vics\Marder\MarderSpikeAmmo.cs" />
+    <Compile Include="Vics\Marder\MarderSpikeSystem.cs" />
+    <Compile Include="Vics\Marder\MarderSpikeMissileCameraFollow.cs" />
+    <Compile Include="Vics\Marder\MarderSpikeTrackingDimensions.cs" />
+    <Compile Include="Vics\Marder\SpikeInfraredTracker.cs" />
+      <!-- Vics\Leo1 -->
+      <Compile Include="Vics\Leo1\LeopardMain.cs" />
+      <Compile Include="Vics\Leo1\Leopard1Ammo.cs" />
+    <Compile Include="Vics\Leo1\EMES18Optic.cs" />
+    <Compile Include="Vics\Leo1\Leopard1SpawnConverter.cs" />
+    <!-- Vics\Brdm2 -->
+    <Compile Include="Vics\Brdm2\Brdm2Main.cs" />
+    <!-- Vics\Btr70 -->
+    <Compile Include="Vics\Btr70\Btr70Main.cs" />
+    <!-- Vics\Pt76 -->
+    <Compile Include="Vics\Pt76\Pt76Main.cs" />
+    <!-- Vics\T64 -->
+    <Compile Include="Vics\T64\T64Main.cs" />
+    <!-- Vics\T54a -->
+    <Compile Include="Vics\T54a\T54aMain.cs" />
+    <!-- Vics\T34 -->
+    <Compile Include="Vics\T34\T34Main.cs" />
+    <!-- UERepair -->
+    <Compile Include="UERepair\RepairMain.cs" />
+    <Compile Include="UERepair\RepairUtils.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
