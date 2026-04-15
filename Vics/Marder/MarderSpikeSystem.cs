@@ -317,23 +317,6 @@ namespace UnderdogsEnhanced
                 rigsByVehicleId.Remove(keys[i]);
         }
 
-        internal static bool IsPlayerUsingManualSpikeInput()
-        {
-            GHPC.Player.PlayerInput playerInput = GHPC.Player.PlayerInput.Instance;
-            WeaponSystem weapon = playerInput != null ? playerInput.CurrentPlayerWeapon?.Weapon : null;
-            if (weapon == null || !MarderSpikeGuidanceRecovery.IsSpikeWeapon(weapon))
-                return false;
-
-            Vehicle vehicle = weapon.GetComponentInParent<Vehicle>();
-            if (vehicle == null)
-                return false;
-
-            if (!rigsByVehicleId.TryGetValue(vehicle.GetInstanceID(), out MarderSpikeRig rig) || rig == null)
-                return false;
-
-            return rig.IsManualMissileViewActive();
-        }
-
         internal static bool TryOverridePlayerManualAimInput(ref float horizontal, ref float vertical)
         {
             GHPC.Player.PlayerInput playerInput = GHPC.Player.PlayerInput.Instance;
@@ -507,8 +490,6 @@ namespace UnderdogsEnhanced
         private const float LockRange = 5000f;
         private const float ProxyRange = 2500f;
         private const int LockConfirmFrames = 2;
-        private const float ManualControlSensitivity = 2.5f;
-        private const float ManualInputDeadzone = 0.02f;
         private const float ThermalLowWidth = 320f;
         private const float ThermalLowHeight = 180f;
         private const float ThermalHighWidth = 1024f;
@@ -969,13 +950,6 @@ namespace UnderdogsEnhanced
             return FindPreferredReturnSlot();
         }
 
-        internal bool PreferManualMissileControl => ShouldUseManualMissileControl();
-
-        internal bool IsManualMissileViewActive()
-        {
-            return ShouldUseManualMissileControl();
-        }
-
         internal bool TryApplyManualAimInput(ref float horizontal, ref float vertical)
         {
             float rawHorizontal = horizontal;
@@ -987,14 +961,23 @@ namespace UnderdogsEnhanced
                 return false;
             }
 
-            bool applyTuning = BMP1MCLOSAmmo.MclosInputTuning.ShouldApplyNow(true);
-            BMP1MCLOSAmmo.MclosInputTuning.ApplyDynamicTurnSpeed(activeMissile.Info, horizontal, vertical, applyTuning);
-            horizontal = ApplyManualInputDeadzone(BMP1MCLOSAmmo.MclosInputTuning.ProcessAxis(horizontal, applyTuning));
-            vertical = ApplyManualInputDeadzone(BMP1MCLOSAmmo.MclosInputTuning.ProcessAxis(vertical, applyTuning));
+            // 非原生 MCLOS 载具改装要点：
+            // 1. 发射前仍使用载具原本的 FCS/炮塔输入链。
+            // 2. 发射后若切到 MCLOS，原版 AdjustAimByRatio 只会继续驱动 MILAN/FCS，
+            //    不会自动把输入转进飞行中的导弹。
+            // 3. 因此这里必须拦截玩家输入，复用 BMP-1 同结构的输入曲线逻辑，
+            //    但 SPIKE 走自己独立的一套调参，再换算成
+            //    FCS.LastDirectAngularVelocity 语义后写入 MissileGuidanceUnit，
+            //    这样才能得到接近原生 MCLOS 的小输入渐进响应。
+            bool applyTuning = MarderSpikeMclosInputTuning.ShouldApplyNow(true);
+            MarderSpikeMclosInputTuning.ApplyDynamicTurnSpeed(activeMissile.Info, horizontal, vertical, applyTuning);
+            horizontal = MarderSpikeMclosInputTuning.ProcessAxis(horizontal, applyTuning);
+            vertical = MarderSpikeMclosInputTuning.ProcessAxis(vertical, applyTuning);
 
             EnsureMclosGuide();
-            SetManualAimAngularVelocity(new Vector2(horizontal, vertical) * ManualControlSensitivity,
-                Mathf.Approximately(horizontal, 0f) && Mathf.Approximately(vertical, 0f) ? "manual_deadzone" : "manual_input");
+            Vector2 angularVelocity = BuildManualAimAngularVelocity(horizontal, vertical);
+            SetManualAimAngularVelocity(angularVelocity,
+                Mathf.Approximately(horizontal, 0f) && Mathf.Approximately(vertical, 0f) ? "manual_zero" : "manual_input");
             activeMissile.SkipGuidanceLockout = true;
             activeMissile.Guided = true;
 
@@ -1101,11 +1084,39 @@ namespace UnderdogsEnhanced
                 }
             }
 
-            if (daySlot != null)
+            Transform aimOrigin = ResolveMclosAimOrigin();
+            if (aimOrigin != null)
             {
-                aimProxy.position = daySlot.transform.position + daySlot.transform.forward * ProxyRange;
-                aimProxy.rotation = Quaternion.LookRotation(daySlot.transform.forward, Vector3.up);
+                aimProxy.position = aimOrigin.position;
+                aimProxy.rotation = Quaternion.LookRotation(aimOrigin.forward, aimOrigin.up);
             }
+        }
+
+        private Transform ResolveMclosAimOrigin()
+        {
+            CameraSlot activeSlot = CameraSlot.ActiveInstance;
+            if (activeSlot != null
+                && activeSlot != missileSlot
+                && SlotBelongsToVehicle(activeSlot)
+                && !activeSlot.IsExterior
+                && !IsCommanderLikeSlot(activeSlot))
+            {
+                return activeSlot.transform;
+            }
+
+            if (preLaunchSightSlot != null && preLaunchSightSlot != missileSlot)
+                return preLaunchSightSlot.transform;
+
+            if (daySlot != null)
+                return daySlot.transform;
+
+            if (thermalSlot != null)
+                return thermalSlot.transform;
+
+            if (fcs != null && fcs.ReferenceTransform != null)
+                return fcs.ReferenceTransform;
+
+            return transform;
         }
 
         private void ApplyWeaponDefaults()
@@ -1977,13 +1988,11 @@ namespace UnderdogsEnhanced
 
         private bool ShouldUseManualMissileControl()
         {
-            // Manual interception is intentionally narrow: MCLOS only, with the player
-            // actually riding the selected SPIKE missile view. This prevents stale input
-            // from leaking into FnF, commander, or exterior viewing.
+            // SPIKE is grafted onto a MILAN mount, so in-flight MCLOS must divert player
+            // aim input away from the launcher and into the missile instead.
             return activeMissile != null
                 && !activeMissile.IsDestroyed
-                && IsMissileCameraActive()
-                && CanAutoAttachSelectedMissileView()
+                && CanUseInteriorSpikeView()
                 && !HasLockTarget();
         }
 
@@ -2017,15 +2026,21 @@ namespace UnderdogsEnhanced
             return allowed;
         }
 
-        private static float ApplyManualInputDeadzone(float axis)
+        private Vector2 BuildManualAimAngularVelocity(float horizontal, float vertical)
         {
-            return Mathf.Abs(axis) < ManualInputDeadzone ? 0f : axis;
+            //输入操作灵敏度中间层处理
+            float horizontalRate = (fcs != null ? fcs._maxAimDeltaRateX : 1f) * 1f;
+            float verticalRate = (fcs != null ? fcs._maxAimDeltaRateY : 1f) * 1f;
+            return new Vector2(horizontal * horizontalRate, vertical * verticalRate);
         }
 
         private void SetManualAimAngularVelocity(Vector2 angularVelocity, string reason)
         {
             if (guidanceUnit == null)
                 return;
+
+            if (fcs != null)
+                fcs.LastDirectAngularVelocity = angularVelocity;
 
             guidanceUnit.ManualAimAngularVelocity = angularVelocity;
 
@@ -2666,13 +2681,15 @@ namespace UnderdogsEnhanced
                 aimPoint = transform.position + transform.forward * ProxyRange;
             }
 
-            aimProxy.position = aimPoint;
-
             if (guidanceMode == SpikeGuidanceMode.MCLOS && activeCamera != null)
             {
+                Transform aimOrigin = ResolveMclosAimOrigin();
+                aimProxy.position = aimOrigin != null ? aimOrigin.position : activeCamera.transform.position;
                 aimProxy.rotation = Quaternion.LookRotation(activeCamera.transform.forward, activeCamera.transform.up);
                 return;
             }
+
+            aimProxy.position = aimPoint;
 
             Vector3 lookFrom = fcs != null && fcs.ReferenceTransform != null ? fcs.ReferenceTransform.position : transform.position;
             Vector3 forward = aimPoint - lookFrom;
@@ -2707,10 +2724,10 @@ namespace UnderdogsEnhanced
             }
 
             if (guidanceUnit.ManualAimAngularVelocity != Vector2.zero)
-                guidanceUnit.ManualAimAngularVelocity = Vector2.zero;
+                SetManualAimAngularVelocity(Vector2.zero, "manual_reset");
 
             if (activeMissile != null && activeMissile.Info != null)
-                BMP1MCLOSAmmo.MclosInputTuning.ApplyDynamicTurnSpeed(activeMissile.Info, 0f, 0f, false);
+                MarderSpikeMclosInputTuning.ApplyDynamicTurnSpeed(activeMissile.Info, 0f, 0f, false);
 
             if (guidanceMode == SpikeGuidanceMode.FnF && activeMissile != null)
             {
@@ -3916,6 +3933,8 @@ namespace UnderdogsEnhanced
     [HarmonyPriority(Priority.First)]
     internal static class MarderSpikeManualAimInputPatch
     {
+        // 仅在“非原生 MCLOS 改装件 + 已发射 + MCLOS 手控弹”时短路原版。
+        // 其余情况继续让游戏走标准 FCS/炮塔 AdjustAimByRatio 链。
         private static bool Prefix(ref float horizontal, ref float vertical)
         {
             return !MarderSpikeSystem.TryOverridePlayerManualAimInput(ref horizontal, ref vertical);

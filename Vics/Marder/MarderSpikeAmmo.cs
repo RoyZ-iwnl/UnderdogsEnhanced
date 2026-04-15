@@ -31,7 +31,8 @@ namespace UnderdogsEnhanced
         private static AmmoClipCodexScriptable spikeClipCodex;
         private static WeaponSystemCodexScriptable spikeWeaponCodex;  // 武器定义
         private const float SpikeMaximumRange = 20000f;//最大距离
-        private const float SpikeTurnSpeed = 0.2f;//转向速度（越大越灵活，但过大会导致过度修正和失速）
+        private const float SpikeTurnSpeed = 0.3f;//转向速度（越大越灵活，但过大会导致过度修正和失速）
+        private static float turnSpeedBaseline = SpikeTurnSpeed;
         private const float SpikeNoisePower = 2f;//噪声强度（增加弹道随机性，降低被动引导系统的命中率，但过大会导致过度偏离目标）
         private const float SpikeNoiseTimeScale = 2f;//噪声时间缩放（控制弹道随机变化的频率，较低值会产生更平滑的偏移，较高值会产生更频繁的偏移）
         private const float SpikeSpiralPower = 2.5f;//螺旋强度（增加弹道的螺旋运动，增加命中不确定性，但过大会导致过度偏离目标）
@@ -45,6 +46,11 @@ namespace UnderdogsEnhanced
         internal static bool IsSpikeAmmo(AmmoType ammo)
         {
             return ammo != null && IsSpikeAmmoName(ammo.Name);
+        }
+
+        internal static float GetTurnSpeedBaseline()
+        {
+            return turnSpeedBaseline;
         }
 
         internal static bool IsSpikeAmmoName(string ammoName)
@@ -162,6 +168,7 @@ namespace UnderdogsEnhanced
             SpikeAmmo.Flight = AmmoType.FlightPattern.Direct;
             SpikeAmmo.MaximumRange = SpikeMaximumRange;
             SpikeAmmo.TurnSpeed = SpikeTurnSpeed;
+            turnSpeedBaseline = SpikeAmmo.TurnSpeed;
             SpikeAmmo.NoisePowerX = SpikeNoisePower;
             SpikeAmmo.NoisePowerY = SpikeNoisePower;
             SpikeAmmo.NoiseTimeScale = SpikeNoiseTimeScale;
@@ -240,6 +247,7 @@ namespace UnderdogsEnhanced
 
             SpikeAmmo.MaximumRange = SpikeMaximumRange;
             SpikeAmmo.TurnSpeed = SpikeTurnSpeed;
+            turnSpeedBaseline = SpikeAmmo.TurnSpeed;
             SpikeAmmo.NoisePowerX = SpikeNoisePower;
             SpikeAmmo.NoisePowerY = SpikeNoisePower;
             SpikeAmmo.NoiseTimeScale = SpikeNoiseTimeScale;
@@ -290,5 +298,85 @@ namespace UnderdogsEnhanced
             feed._totalReloadTime = SPIKE_RELOAD_TIME;
         }
 
+    }
+
+    public static class MarderSpikeMclosInputTuning
+    {
+        // SPIKE 使用和 BMP-1 同结构的 MCLOS 曲线逻辑，但参数单独拆分，便于独立调手感。
+        public const bool DEFAULT_ENABLED = true;
+        public const bool DEFAULT_ONLY_WHEN_MISSILE_CAMERA = true;
+        public const float DEFAULT_INPUT_SCALE = 1f;
+        public const float DEFAULT_CURVE_EXPONENT = 0.45f;
+        public const bool DEFAULT_DYNAMIC_TURNSPEED_ENABLED = true;
+        public const float DEFAULT_DYNAMIC_TURNSPEED_MIN_MULTIPLIER = 0.25f;
+        public const float DEFAULT_DYNAMIC_TURNSPEED_MAX_MULTIPLIER = 2f;
+        public const float DEFAULT_DYNAMIC_TURNSPEED_EXPONENT = 0.7f;
+
+        public static bool Enabled = DEFAULT_ENABLED;
+        public static bool OnlyWhenMissileCamera = DEFAULT_ONLY_WHEN_MISSILE_CAMERA;
+        public static float InputScale = DEFAULT_INPUT_SCALE;
+        public static float CurveExponent = DEFAULT_CURVE_EXPONENT;
+        public static bool DynamicTurnSpeedEnabled = DEFAULT_DYNAMIC_TURNSPEED_ENABLED;
+        public static float DynamicTurnSpeedMinMultiplier = DEFAULT_DYNAMIC_TURNSPEED_MIN_MULTIPLIER;
+        public static float DynamicTurnSpeedMaxMultiplier = DEFAULT_DYNAMIC_TURNSPEED_MAX_MULTIPLIER;
+        public static float DynamicTurnSpeedExponent = DEFAULT_DYNAMIC_TURNSPEED_EXPONENT;
+        public static bool RuntimeApplying { get; private set; } = false;
+        public static float LastTurnSpeedMultiplier { get; private set; } = 1f;
+
+        public static void ResetToDefaults()
+        {
+            Enabled = DEFAULT_ENABLED;
+            OnlyWhenMissileCamera = DEFAULT_ONLY_WHEN_MISSILE_CAMERA;
+            InputScale = DEFAULT_INPUT_SCALE;
+            CurveExponent = DEFAULT_CURVE_EXPONENT;
+            DynamicTurnSpeedEnabled = DEFAULT_DYNAMIC_TURNSPEED_ENABLED;
+            DynamicTurnSpeedMinMultiplier = DEFAULT_DYNAMIC_TURNSPEED_MIN_MULTIPLIER;
+            DynamicTurnSpeedMaxMultiplier = DEFAULT_DYNAMIC_TURNSPEED_MAX_MULTIPLIER;
+            DynamicTurnSpeedExponent = DEFAULT_DYNAMIC_TURNSPEED_EXPONENT;
+            RuntimeApplying = false;
+            LastTurnSpeedMultiplier = 1f;
+        }
+
+        public static bool ShouldApplyNow(bool missileCameraActive)
+        {
+            if (!Enabled) return false;
+            if (OnlyWhenMissileCamera && !missileCameraActive) return false;
+            return true;
+        }
+
+        public static float ProcessAxis(float axis, bool applyNow)
+        {
+            RuntimeApplying = applyNow;
+            if (!applyNow) return axis;
+
+            float sign = Mathf.Sign(axis);
+            float abs = Mathf.Abs(axis);
+            float exp = Mathf.Clamp(CurveExponent, 0.2f, 2f);
+            float curved = Mathf.Pow(abs, exp);
+            float scaled = curved * Mathf.Clamp(InputScale, 0.1f, 5f);
+            return sign * Mathf.Clamp(scaled, 0f, 1f);
+        }
+
+        public static void ApplyDynamicTurnSpeed(AmmoType ammo, float horizontal, float vertical, bool applyNow)
+        {
+            if (ammo == null) return;
+
+            float baseTurnSpeed = MarderSpikeAmmo.GetTurnSpeedBaseline();
+            if (!applyNow || !DynamicTurnSpeedEnabled)
+            {
+                LastTurnSpeedMultiplier = 1f;
+                ammo.TurnSpeed = baseTurnSpeed;
+                return;
+            }
+
+            float inputMagnitude = Mathf.Clamp01(new Vector2(horizontal, vertical).magnitude);
+            float exp = Mathf.Clamp(DynamicTurnSpeedExponent, 0.2f, 3f);
+            float t = Mathf.Pow(inputMagnitude, exp);
+            float minMul = Mathf.Max(0.01f, DynamicTurnSpeedMinMultiplier);
+            float maxMul = Mathf.Max(minMul, DynamicTurnSpeedMaxMultiplier);
+            float mul = Mathf.Lerp(minMul, maxMul, t);
+            LastTurnSpeedMultiplier = mul;
+            ammo.TurnSpeed = baseTurnSpeed * mul;
+        }
     }
 }

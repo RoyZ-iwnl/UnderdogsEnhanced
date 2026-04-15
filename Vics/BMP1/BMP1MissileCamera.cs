@@ -464,6 +464,9 @@ UnderdogsDebug.LogMCLOS("[BMP-1 MCLOS] Thermal assets initialized: FLIR=" + (fli
 
             // 激活这个CameraSlot
             CameraSlot.SetActiveSlot(_thermalSlot);
+
+            bool removeScanline = Bmp1Main.bmp1_mclos_flir_no_scanline == null || Bmp1Main.bmp1_mclos_flir_no_scanline.Value;
+            UnderdogsDebug.LogMCLOS("[BMP-1 MCLOS] Thermal setup complete: Slot=" + (_thermalSlot != null) + ", SNV=" + (_snv != null) + ", PostVolumeSet=" + (postVolumeField != null) + ", Res=" + _thermalSlot.FLIRWidth + "x" + _thermalSlot.FLIRHeight + ", NoScan=" + removeScanline);
         }
 
 
