@@ -94,7 +94,7 @@ namespace UnderdogsEnhanced
 
                 loadoutManager.LoadedAmmoList.AmmoClips[i] = bundle.ClipCodex;
 
-                // 参考 PIL：先清空所有 rack，再重建 loadout，避免沿用上一关/上一套弹药残留的可视化状态。
+                // 先清空所有 rack，再重建 loadout，避免沿用上一关/上一套弹药残留的可视化状态。
                 UECommonUtil.EmptyAllLoadoutRacks(loadoutManager);
                 UECommonUtil.ClearAmmoInBreech(weapon?.Feed);
                 UECommonUtil.RespawnLoadout(loadoutManager);

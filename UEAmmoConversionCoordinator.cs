@@ -17,6 +17,8 @@ namespace UnderdogsEnhanced
         {
             AppliedVehicleIds.Clear();
             Leopard1Ammo.ResetSceneState();
+            Marder25mmAmmo.ResetSceneState();
+            Marder35mmAmmo.ResetSceneState();
         }
 
         internal static IEnumerator EnsureAmmoConversionsOnGameReady(GameState _, string sceneName)
@@ -75,6 +77,12 @@ namespace UnderdogsEnhanced
             // Marder Spike
             if (MatchesMarderSpike(vehicle)) return true;
 
+            // Marder 25mm
+            if (MatchesMarder25mm(vehicle)) return true;
+
+            // Marder 35mm
+            if (MatchesMarder35mm(vehicle)) return true;
+
             return false;
         }
 
@@ -105,6 +113,22 @@ namespace UnderdogsEnhanced
             {
                 matched = true;
                 if (!TryApplyMarderSpike(vehicle))
+                    return false;
+            }
+
+            // Marder 25mm
+            if (MatchesMarder25mm(vehicle))
+            {
+                matched = true;
+                if (!TryApplyMarder25mm(vehicle))
+                    return false;
+            }
+
+            // Marder 35mm
+            if (MatchesMarder35mm(vehicle))
+            {
+                matched = true;
+                if (!TryApplyMarder35mm(vehicle))
                     return false;
             }
 
@@ -141,6 +165,34 @@ namespace UnderdogsEnhanced
         {
             string ammoType = LeopardMain.GetAmmoType(vehicle.FriendlyName);
             return Leopard1Ammo.TryApply(vehicle, ammoType);
+        }
+
+        #endregion
+
+        #region Marder 25mm
+
+        private static bool MatchesMarder25mm(Vehicle vehicle)
+        {
+            return Marder25mmAmmo.MatchesVehicle(vehicle);
+        }
+
+        private static bool TryApplyMarder25mm(Vehicle vehicle)
+        {
+            return Marder25mmAmmo.TryApply(vehicle);
+        }
+
+        #endregion
+
+        #region Marder 35mm
+
+        private static bool MatchesMarder35mm(Vehicle vehicle)
+        {
+            return Marder35mmAmmo.MatchesVehicle(vehicle);
+        }
+
+        private static bool TryApplyMarder35mm(Vehicle vehicle)
+        {
+            return Marder35mmAmmo.TryApply(vehicle);
         }
 
         #endregion

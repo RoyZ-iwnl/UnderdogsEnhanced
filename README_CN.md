@@ -16,9 +16,18 @@ Underdogs 只是个玩笑，别当真。
 | BMP-1 / BMP-1P | 激光测距仪（仅显示，无自动测距） | 开启 |
 | BMP-1 / BMP-1G | 9M14TV Malyutka-TV 电视制导导弹（含热成像摄像机） | 开启 |
 | BMP-1P | Konkurs 反坦克导弹稳定器 | 关闭 |
-| Marder 1A2 / A1- / A1+ | 稳定器 | 开启 |
+| Marder 1A2 / A1- / A1- (no ATGM) / A1+ | 稳定器 | 开启 |
 | Marder 1A2 / A1+ | MILAN 导弹发射器稳定器 | 开启 |
-| Marder 1A2 / A1- / A1+ | 激光测距仪（4000m）+ 视差修正 | 开启 |
+| Marder 1A2 / A1- / A1- (no ATGM) / A1+ | FCS增强（6000m激光测距、superlead、视差修正） | 开启 |
+| Marder 1A2 / A1- / A1- (no ATGM) / A1+ | 主炮口径可选（25mm KBA 或 35mm Revolver） | 25mm |
+| Marder 1A2 / A1- / A1- (no ATGM) / A1+（25mm） | AP弹链：PMB090瑞士钢针（92mm穿深）或 M791 | PMB090 |
+| Marder 1A2 / A1- / A1- (no ATGM) / A1+（25mm） | 双射速 175/600 RPM（[B]键切换） | 开启 |
+| Marder 1A2 / A1- / A1- (no ATGM) / A1+（35mm） | AP弹链：DM33/DM23/DM13 可选 | DM33 |
+| Marder 1A2 / A1- / A1- (no ATGM) / A1+（35mm） | 双射速 200/1000 RPM（[B]键切换） | 开启 |
+| Marder A1+ / A1- / A1- (no ATGM) | 热成像改装（Marder 1A2 FLIR瞄具） | 开启 |
+| Marder 1A2 / A1- / A1- (no ATGM) / A1+ | 炮塔转速提升 | 开启 |
+| Marder 1A2 / A1- / A1- (no ATGM) / A1+ | 动力升级（发动机、悬挂、转向） | 开启 |
+| Marder 1A2 / A1+ / A1- | Spike WIP：TV/FnF混合制导 + 攻顶弹道 | 关闭 |
 | BRDM-2 | 稳定器 | 开启 |
 | BRDM-2 | 炮塔旋转速度提升 | 开启 |
 | BRDM-2 | 炮手瞄准镜变焦档位 | 开启 |
@@ -58,9 +67,22 @@ BMP-1 MCLOS Ready Missiles = -1
 BMP-1 MCLOS FLIR High Resolution = false
 BMP-1 MCLOS FLIR Remove Scanline = false
 BMP-1P Konkurs Stab = false
+Marder Mod Master Switch = true
+Marder Cannon Caliber = 25mm
+Marder 25mm AP Belt = PMB090
+Marder 25mm AP Count = 254
+Marder 25mm HE Count = 254
+Marder 35mm AP Belt = DM33
+Marder 35mm AP Count = 254
+Marder 35mm HE Count = 254
 Marder Stabilizer = true
 Marder MILAN Stabilizer = true
-Marder Rangefinder = true
+Marder A1 Thermal Retrofit = true
+Marder BetterFCS = true
+Marder Turret Speedup = true
+Marder Engine Upgrade = true
+Marder Spike WIP = false
+Marder Spike Ready Missiles = -1
 BRDM-2 Stabilizer = true
 BRDM-2 Turret Speed = true
 BRDM-2 Optics = true

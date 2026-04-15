@@ -110,6 +110,8 @@ namespace UnderdogsEnhanced
                 if (!loadedAssetReferences.Contains(prefabRef))
                     loadedAssetReferences.Add(prefabRef);
 
+                // 同步 Addressables 加载点。调用方必须保证场景状态稳定，
+                // 不能放在退菜单这类敏感切换窗口里阻塞主线程。
                 var loaded = prefabRef.LoadAssetAsync<GameObject>().WaitForCompletion();
                 return loaded != null ? loaded.GetComponent<Vehicle>() : null;
             }

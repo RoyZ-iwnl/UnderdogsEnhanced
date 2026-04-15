@@ -20,7 +20,16 @@ Based on work by [ATLAS](https://github.com/thebeninator/Stabilized-BMP-1)
 | BMP-1P | Konkurs ATGM stabilizer | Off |
 | Marder 1A2 / A1- / A1+ | Vector stabilizer | On |
 | Marder 1A2 / A1+ | MILAN launcher stabilizer | On |
-| Marder 1A2 / A1- / A1+ | Laser rangefinder (4000m) + parallax fix | On |
+| Marder 1A2 / A1- / A1+ | Enhanced FCS (6000m LRF, superlead, parallax fix) | On |
+| Marder 1A2 / A1- / A1- (no ATGM) / A1+ | Cannon caliber option (25mm KBA or 35mm Revolver) | 25mm |
+| Marder 1A2 / A1- / A1- (no ATGM) / A1+ (25mm) | AP belt: PMB090 Swiss APFSDS (92mm pen) or M791 | PMB090 |
+| Marder 1A2 / A1- / A1- (no ATGM) / A1+ (25mm) | Dual fire rate 175/600 RPM ([B] toggle) | On |
+| Marder 1A2 / A1- / A1- (no ATGM) / A1+ (35mm) | AP belt: DM33/DM23/DM13 selectable | DM33 |
+| Marder 1A2 / A1- / A1- (no ATGM) / A1+ (35mm) | Dual fire rate 200/1000 RPM ([B] toggle) | On |
+| Marder A1+ / A1- / A1- (no ATGM) | Thermal retrofit (Marder 1A2 FLIR sight) | On |
+| Marder 1A2 / A1- / A1- (no ATGM) / A1+ | Turret traverse speedup | On |
+| Marder 1A2 / A1- / A1- (no ATGM) / A1+ | Engine upgrade (power, suspension, steering) | On |
+| Marder 1A2 / A1+ / A1- | Spike WIP: TV/FnF hybrid guidance + top-attack | Off |
 | BRDM-2 | Vector stabilizer | On |
 | BRDM-2 | Increased turret traverse speed | On |
 | BRDM-2 | Gunner sight zoom levels | On |
@@ -60,9 +69,22 @@ BMP-1 MCLOS Ready Missiles = -1
 BMP-1 MCLOS FLIR High Resolution = false
 BMP-1 MCLOS FLIR Remove Scanline = false
 BMP-1P Konkurs Stab = false
+Marder Mod Master Switch = true
+Marder Cannon Caliber = 25mm
+Marder 25mm AP Belt = PMB090
+Marder 25mm AP Count = 254
+Marder 25mm HE Count = 254
+Marder 35mm AP Belt = DM33
+Marder 35mm AP Count = 254
+Marder 35mm HE Count = 254
 Marder Stabilizer = true
 Marder MILAN Stabilizer = true
-Marder Rangefinder = true
+Marder A1 Thermal Retrofit = true
+Marder BetterFCS = true
+Marder Turret Speedup = true
+Marder Engine Upgrade = true
+Marder Spike WIP = false
+Marder Spike Ready Missiles = -1
 BRDM-2 Stabilizer = true
 BRDM-2 Turret Speed = true
 BRDM-2 Optics = true

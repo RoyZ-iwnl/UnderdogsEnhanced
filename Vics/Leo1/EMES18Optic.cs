@@ -694,8 +694,8 @@ namespace UnderdogsEnhanced
         {
             if (t == null) return false;
 
-            string n = (t.name ?? string.Empty).ToLowerInvariant();
-            if (n.Contains("distance scale") || n.Contains("range scale") || n.Contains("rangescale"))
+            string n = (t.name ?? string.Empty);
+            if (n.Equals("rangefinder mark vis parent", StringComparison.OrdinalIgnoreCase))
                 return true;
 
             try
@@ -717,10 +717,8 @@ namespace UnderdogsEnhanced
         {
             if (t == null) return false;
 
-            string n = (t.name ?? string.Empty).ToLowerInvariant();
-            if (n.Contains("stereo rangefinder")) return true;
-            if (n.Contains("rangefinder mark vis parent")) return true;
-            if (n.Contains("rangefinder mark")) return true;
+            string n = (t.name ?? string.Empty);
+            if (n.Equals("Stereo rangefinder", StringComparison.OrdinalIgnoreCase)) return true;
             return false;
         }
 
@@ -2774,8 +2772,8 @@ namespace UnderdogsEnhanced
                     if (r == null) continue;
                     if (r.transform.IsChildOf(optic.transform))
                     {
-                        string cn = r.name.ToLowerInvariant();
-                        if (cn.Contains("reticle") || cn.Contains("emes18")) continue;
+                        string cn = r.name;
+                        if (cn.Equals("Reticle Mesh rangefinding", StringComparison.OrdinalIgnoreCase)) continue;
                     }
 
                     string path = BuildPath(r.transform, searchRoot);
@@ -2810,8 +2808,8 @@ namespace UnderdogsEnhanced
                     if (c == null) continue;
                     if (c.transform.IsChildOf(optic.transform))
                     {
-                        string cn = c.name.ToLowerInvariant();
-                        if (cn.Contains("emes18")) continue;
+                        string cn = c.name;
+                        if (cn.Equals("Leopard 1 GPS canvas", StringComparison.OrdinalIgnoreCase)) continue;
                     }
 
                     string path = BuildPath(c.transform, searchRoot);
@@ -3066,10 +3064,8 @@ namespace UnderdogsEnhanced
                 {
                     if (info == null || info.Weapon == null) continue;
 
-                    string n1 = (info.Name ?? string.Empty).ToLowerInvariant();
-                    string n2 = (info.Weapon.MetaName ?? info.Weapon.name ?? string.Empty).ToLowerInvariant();
-                    if (n1.Contains("coax") || n1.Contains("machine") || n1.Contains("mg") ||
-                        n2.Contains("coax") || n2.Contains("machine") || n2.Contains("mg"))
+                    string n2 = (info.Weapon.MetaName ?? info.Weapon.name ?? string.Empty);
+                    if (n2.Equals("7.62mm Machine Gun MG3", StringComparison.OrdinalIgnoreCase))
                     {
                         coax_weapon_system = info.Weapon;
                         return;
@@ -3135,8 +3131,8 @@ namespace UnderdogsEnhanced
                     if (coax_weapon_system == null) ResolveCoaxWeaponSystem();
                     if (coax_weapon_system != null && activeWeapon == coax_weapon_system) return true;
 
-                    string n = (activeWeapon.MetaName ?? activeWeapon.name ?? string.Empty).ToLowerInvariant();
-                    return n.Contains("coax") || n.Contains("machine") || n.Contains("mg");
+                    string n = (activeWeapon.MetaName ?? activeWeapon.name ?? string.Empty);
+                    return n.Equals("7.62mm Machine Gun MG3", StringComparison.OrdinalIgnoreCase);
                 }
                 catch
                 {

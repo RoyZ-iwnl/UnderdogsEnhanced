@@ -34,7 +34,7 @@ namespace UnderdogsEnhanced
             if (!pt76_lrf.Value) return;
 
 #if DEBUG
-            UnderdogsDebug.LogTiming($"[UE]   > 匹配 PT-76B 测距改装");
+            UnderdogsDebug.LogTiming($"[TIMING]   > 匹配 PT-76B 测距改装");
 #endif
 
             WeaponsManager weapons_manager = vic.GetComponent<WeaponsManager>();

@@ -138,7 +138,7 @@ namespace UnderdogsEnhanced
             if (!stab_bmp.Value && !bmp_lrf.Value) return;
 
 #if DEBUG
-            UnderdogsDebug.LogTiming($"[UE]   > 匹配 BMP-1 改装 (stab={stab_bmp.Value} lrf={bmp_lrf.Value})");
+            UnderdogsDebug.LogTiming($"[TIMING]   > 匹配 BMP-1 改装 (stab={stab_bmp.Value} lrf={bmp_lrf.Value})");
 #endif
 
             WeaponsManager weapons_manager = vic.GetComponent<WeaponsManager>();

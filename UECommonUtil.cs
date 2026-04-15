@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -121,7 +122,30 @@ namespace UnderdogsEnhanced
         private static readonly MethodInfo m_emesSetDefaultScopeSpriteRendered = typeof(EMES18Optic).GetMethod("SetDefaultScopeSpriteRendered", BindingFlags.Static | BindingFlags.NonPublic);
         private static readonly MethodInfo m_ammoRackRemoveAmmoVisual = typeof(GHPC.Weapons.AmmoRack).GetMethod("RemoveAmmoVisualFromSlot", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         private static readonly MethodInfo m_feedSetNextClipType = typeof(AmmoFeed).GetMethod("SetNextClipType", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly MethodInfo m_feedGetLoadedClipByType = typeof(AmmoFeed).GetMethod("GetLoadedClipByType", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly MethodInfo m_loadoutRefreshSnapshot = typeof(LoadoutManager).GetMethod("RefreshSnapshot", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         private static readonly PropertyInfo p_ammoRackStoredClips = typeof(GHPC.Weapons.AmmoRack).GetProperty("StoredClips", AmmoRackFlags);
+        private static readonly FieldInfo f_loadoutTotalAmmoCount = typeof(LoadoutManager).GetField("_totalAmmoCount", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_loadoutTotalAmmoTypes = typeof(LoadoutManager).GetField("_totalAmmoTypes", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_feedAmmoTypeInBreechBacking = typeof(AmmoFeed).GetField("<AmmoTypeInBreech>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_feedLoadedClipTypeBacking = typeof(AmmoFeed).GetField("<LoadedClipType>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_feedQueuedClipTypeBacking = typeof(AmmoFeed).GetField("<QueuedClipType>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_feedQueuedClipTypeLockedIn = typeof(AmmoFeed).GetField("_queuedClipTypeLockedIn", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_feedClipMain = typeof(AmmoFeed).GetField("_feedClipMain", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_feedClipAux = typeof(AmmoFeed).GetField("_feedClipAux", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_feedAuxFeedMode = typeof(AmmoFeed).GetField("_auxFeedMode", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly PropertyInfo p_feedLoadedClip = typeof(AmmoFeed).GetProperty("LoadedClip", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_mainGunAmmo = typeof(MainGun).GetField("Ammo", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_mainGunReadyRack = typeof(MainGun).GetField("_readyRack", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_mainGunAvailableAmmo = typeof(MainGun).GetField("AvailableAmmo", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_mainGunAmmoCounts = typeof(MainGun).GetField("AmmoCounts", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_mainGunAmmoIndexInBreech = typeof(MainGun).GetField("_ammoIndexInBreech", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_mainGunCurrentAmmoIndex = typeof(MainGun).GetField("_currentAmmoIndex", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_mainGunNextAmmoIndex = typeof(MainGun).GetField("_nextAmmoIndex", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly PropertyInfo p_mainGunUseAmmoRacks = typeof(MainGun).GetProperty("UseAmmoRacks", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly MethodInfo m_mainGunUpdateAmmoCounts = typeof(MainGun).GetMethod("UpdateAmmoCounts", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly MethodInfo m_mainGunSelectAmmoType = typeof(MainGun).GetMethod("SelectAmmoType", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly MethodInfo m_mainGunForceRoundToBreech = typeof(MainGun).GetMethod("ForceRoundToBreech", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         internal static readonly HashSet<string> MenuScenes = new HashSet<string>(StringComparer.Ordinal)
         {
             "MainMenu2_Scene",
@@ -419,6 +443,55 @@ namespace UnderdogsEnhanced
             loadoutManager.SpawnCurrentLoadout();
         }
 
+        internal static void RestoreLoadoutAmmoCounts(LoadoutManager loadoutManager, int[] totalAmmoCounts, int[][] rackAmmoCounts, bool refreshSnapshot = true)
+        {
+            if (loadoutManager == null)
+                return;
+
+            if (totalAmmoCounts != null)
+            {
+                if (loadoutManager.TotalAmmoCounts == null || loadoutManager.TotalAmmoCounts.Length != totalAmmoCounts.Length)
+                    loadoutManager.TotalAmmoCounts = (int[])totalAmmoCounts.Clone();
+                else
+                    Array.Copy(totalAmmoCounts, loadoutManager.TotalAmmoCounts, totalAmmoCounts.Length);
+
+                try
+                {
+                    if (f_loadoutTotalAmmoTypes != null)
+                        f_loadoutTotalAmmoTypes.SetValue(loadoutManager, totalAmmoCounts.Length);
+                }
+                catch { }
+
+                try
+                {
+                    if (f_loadoutTotalAmmoCount != null)
+                        f_loadoutTotalAmmoCount.SetValue(loadoutManager, totalAmmoCounts.Sum());
+                }
+                catch { }
+            }
+
+            if (rackAmmoCounts != null && loadoutManager.RackLoadouts != null)
+            {
+                int rackCount = Math.Min(loadoutManager.RackLoadouts.Length, rackAmmoCounts.Length);
+                for (int i = 0; i < rackCount; i++)
+                {
+                    if (loadoutManager.RackLoadouts[i] == null || rackAmmoCounts[i] == null)
+                        continue;
+
+                    loadoutManager.RackLoadouts[i].AmmoCounts = (int[])rackAmmoCounts[i].Clone();
+                }
+            }
+
+            if (!refreshSnapshot)
+                return;
+
+            try
+            {
+                m_loadoutRefreshSnapshot?.Invoke(loadoutManager, null);
+            }
+            catch { }
+        }
+
         internal static void RefreshLauncherFeed(AmmoFeed feed)
         {
             if (feed == null)
@@ -442,6 +515,99 @@ namespace UnderdogsEnhanced
                 return;
 
             try { feed.Start(); } catch { }
+        }
+
+        internal static void SyncAutocannonFeed(WeaponSystem weapon, AmmoType.AmmoClip[] clipTypes, AmmoType[] ammoTypes, int[] ammoCounts, int selectedIndex)
+        {
+            AmmoFeed feed = weapon?.Feed;
+            if (feed == null || clipTypes == null || ammoTypes == null || ammoCounts == null)
+                return;
+
+            for (int ammoIndex = 0; ammoIndex < ammoCounts.Length && ammoIndex < clipTypes.Length; ammoIndex++)
+            {
+                object queue = GetLoadedClipQueueByType(feed, clipTypes[ammoIndex]);
+                PopulateQueue(queue, ammoIndex < ammoTypes.Length ? ammoTypes[ammoIndex] : null, clipTypes[ammoIndex], Math.Max(0, ammoCounts[ammoIndex]));
+            }
+
+            object mainQueue = f_feedClipMain != null ? f_feedClipMain.GetValue(feed) : null;
+            object auxQueue = f_feedClipAux != null ? f_feedClipAux.GetValue(feed) : null;
+            PopulateQueue(mainQueue, ammoTypes.Length > 0 ? ammoTypes[0] : null, clipTypes.Length > 0 ? clipTypes[0] : null, ammoCounts.Length > 0 ? Math.Max(0, ammoCounts[0]) : 0);
+            PopulateQueue(auxQueue, ammoTypes.Length > 1 ? ammoTypes[1] : null, clipTypes.Length > 1 ? clipTypes[1] : null, ammoCounts.Length > 1 ? Math.Max(0, ammoCounts[1]) : 0);
+
+            if (selectedIndex < 0 || selectedIndex >= clipTypes.Length)
+                selectedIndex = 0;
+
+            AmmoType.AmmoClip selectedClip = clipTypes[selectedIndex];
+            AmmoType selectedAmmo = selectedIndex < ammoTypes.Length ? ammoTypes[selectedIndex] : GetAmmoTypeFromClip(selectedClip);
+
+            try
+            {
+                if (f_feedAuxFeedMode != null)
+                    f_feedAuxFeedMode.SetValue(feed, selectedIndex > 0);
+            }
+            catch { }
+
+            try
+            {
+                if (selectedClip != null)
+                    feed.SetNextClipType(selectedClip);
+            }
+            catch
+            {
+                try
+                {
+                    if (m_feedSetNextClipType != null && selectedClip != null)
+                        m_feedSetNextClipType.Invoke(feed, new object[] { selectedClip });
+                }
+                catch { }
+            }
+
+            PopulateQueue(GetLoadedClipObject(feed), selectedAmmo, selectedClip, selectedIndex < ammoCounts.Length ? Math.Max(0, ammoCounts[selectedIndex]) : 0);
+
+            try { feed.LoadedClipType = selectedClip; } catch { }
+            try { feed.QueuedClipType = selectedClip; } catch { }
+            try { feed.AmmoTypeInBreech = selectedAmmo; } catch { }
+            try { feed.Reloading = false; } catch { }
+            try { feed.ForcePauseReload = false; } catch { }
+            try { if (f_feedLoadedClipTypeBacking != null) f_feedLoadedClipTypeBacking.SetValue(feed, selectedClip); } catch { }
+            try { if (f_feedQueuedClipTypeBacking != null) f_feedQueuedClipTypeBacking.SetValue(feed, selectedClip); } catch { }
+            try { if (f_feedQueuedClipTypeLockedIn != null) f_feedQueuedClipTypeLockedIn.SetValue(feed, selectedClip); } catch { }
+            try { if (f_feedAmmoTypeInBreechBacking != null) f_feedAmmoTypeInBreechBacking.SetValue(feed, selectedAmmo); } catch { }
+        }
+
+        internal static void SyncLegacyMainGun(WeaponSystem weapon, AmmoCodexScriptable[] ammoCodexes, AmmoType[] ammoTypes, int[] ammoCounts, int selectedIndex)
+        {
+            if (weapon == null || ammoCodexes == null || ammoTypes == null || ammoCounts == null)
+                return;
+
+            MainGun mainGun = FindLegacyMainGun(weapon);
+            if (mainGun == null)
+                return;
+
+            try { p_mainGunUseAmmoRacks?.SetValue(mainGun, true, null); } catch { }
+            try { f_mainGunAmmo?.SetValue(mainGun, ammoCodexes); } catch { }
+            try { f_mainGunAvailableAmmo?.SetValue(mainGun, ammoTypes); } catch { }
+            try { f_mainGunAmmoCounts?.SetValue(mainGun, (int[])ammoCounts.Clone()); } catch { }
+            try { m_mainGunUpdateAmmoCounts?.Invoke(mainGun, null); } catch { }
+
+            if (selectedIndex < 0 || selectedIndex >= ammoCounts.Length)
+                selectedIndex = 0;
+
+            try { f_mainGunCurrentAmmoIndex?.SetValue(mainGun, selectedIndex); } catch { }
+            try { f_mainGunNextAmmoIndex?.SetValue(mainGun, selectedIndex); } catch { }
+            try { m_mainGunSelectAmmoType?.Invoke(mainGun, new object[] { selectedIndex }); } catch { }
+
+            if (selectedIndex >= 0 && selectedIndex < ammoCounts.Length && ammoCounts[selectedIndex] > 0)
+            {
+                try { f_mainGunAmmoIndexInBreech?.SetValue(mainGun, selectedIndex); } catch { }
+                try { m_mainGunForceRoundToBreech?.Invoke(mainGun, new object[] { selectedIndex }); } catch { }
+            }
+            else
+            {
+                try { f_mainGunAmmoIndexInBreech?.SetValue(mainGun, -1); } catch { }
+            }
+
+            try { m_mainGunUpdateAmmoCounts?.Invoke(mainGun, null); } catch { }
         }
         internal static void ResetFeedForClip(AmmoFeed feed, AmmoType ammoType, AmmoType.AmmoClip clipType, bool startFeed, bool queueClipType = false)
         {
@@ -518,6 +684,116 @@ namespace UnderdogsEnhanced
                     m_ammoRackRemoveAmmoVisual.Invoke(rack, new object[] { visualSlot });
             }
             catch { }
+        }
+
+        private static object GetLoadedClipQueueByType(AmmoFeed feed, AmmoType.AmmoClip clipType)
+        {
+            try
+            {
+                return m_feedGetLoadedClipByType != null ? m_feedGetLoadedClipByType.Invoke(feed, new object[] { clipType }) : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static object GetLoadedClipObject(AmmoFeed feed)
+        {
+            try
+            {
+                return p_feedLoadedClip != null ? p_feedLoadedClip.GetValue(feed, null) : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool PopulateQueue(object queue, AmmoType ammoType, AmmoType.AmmoClip clipType, int count)
+        {
+            try
+            {
+                if (queue == null)
+                    return false;
+
+                Type queueType = queue.GetType();
+                MethodInfo clearMethod = queueType.GetMethod("Clear", BindingFlags.Instance | BindingFlags.Public);
+                MethodInfo enqueueMethod = queueType.GetMethod("Enqueue", BindingFlags.Instance | BindingFlags.Public);
+                Type itemType = queueType.IsGenericType ? queueType.GetGenericArguments()[0] : null;
+                if (clearMethod == null || enqueueMethod == null || itemType == null)
+                    return false;
+
+                clearMethod.Invoke(queue, null);
+
+                object queueItem = null;
+                if (ammoType != null && itemType.IsInstanceOfType(ammoType))
+                    queueItem = ammoType;
+                else if (clipType != null && itemType.IsInstanceOfType(clipType))
+                    queueItem = clipType;
+                else
+                {
+                    AmmoCodexScriptable ammoCodex = clipType?.MinimalPattern != null && clipType.MinimalPattern.Length > 0
+                        ? clipType.MinimalPattern[0]
+                        : null;
+                    if (ammoCodex != null && itemType.IsInstanceOfType(ammoCodex))
+                        queueItem = ammoCodex;
+                }
+
+                if (queueItem == null)
+                    return count == 0;
+
+                for (int i = 0; i < count; i++)
+                    enqueueMethod.Invoke(queue, new object[] { queueItem });
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static AmmoType GetAmmoTypeFromClip(AmmoType.AmmoClip clip)
+        {
+            return clip?.MinimalPattern != null && clip.MinimalPattern.Length > 0
+                ? clip.MinimalPattern[0]?.AmmoType
+                : null;
+        }
+
+        private static MainGun FindLegacyMainGun(WeaponSystem weapon)
+        {
+            if (weapon == null)
+                return null;
+
+            GHPC.Weapons.AmmoRack readyRack = weapon.Feed != null ? weapon.Feed.ReadyRack : null;
+            MainGun fallback = null;
+            MainGun[] candidates = weapon.transform.root != null
+                ? weapon.transform.root.GetComponentsInChildren<MainGun>(true)
+                : weapon.GetComponentsInChildren<MainGun>(true);
+
+            if (candidates == null || candidates.Length == 0)
+                return null;
+
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                MainGun candidate = candidates[i];
+                if (candidate == null)
+                    continue;
+
+                if (fallback == null)
+                    fallback = candidate;
+
+                try
+                {
+                    GHPC.Weapons.AmmoRack candidateRack = f_mainGunReadyRack != null ? f_mainGunReadyRack.GetValue(candidate) as GHPC.Weapons.AmmoRack : null;
+                    if (candidateRack != null && candidateRack == readyRack)
+                        return candidate;
+                }
+                catch { }
+            }
+
+            return fallback;
         }
 
         /// <summary>

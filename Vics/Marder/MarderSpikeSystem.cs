@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using GHPC;
 using GHPC.Camera;
 using GHPC.Equipment.Optics;
 using GHPC.Thermals;
@@ -258,6 +259,10 @@ namespace UnderdogsEnhanced
     internal static class MarderSpikeSystem
     {
         private const string ThermalSlotName = "Spike Thermal";
+        internal static readonly string[] DaySlotExactNames = { "MILAN sight and FCS" };
+        internal static readonly string[] DaySlotExactPathSuffixes = { "Marder1A1_rig/hull/turret/turret scripts/MILAN_rig/MILAN/azimuth/elevation/MILAN elevation scripts/MILAN sight and FCS" };
+        internal static readonly string[] CommanderSlotExactNames = { "commander head" };
+        internal static readonly string[] CommanderSlotExactPathSuffixes = { "Marder1A1_rig/hull/turret/commander head" };
         private static readonly Dictionary<int, MarderSpikeRig> rigsByVehicleId = new Dictionary<int, MarderSpikeRig>();
         private static readonly FieldInfo f_cm_allCamSlots = typeof(CameraManager).GetField("_allCamSlots", BindingFlags.Instance | BindingFlags.NonPublic);
         private static readonly FieldInfo f_uo_hasGuidance = typeof(UsableOptic).GetField("_hasGuidance", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -267,6 +272,19 @@ namespace UnderdogsEnhanced
         private static readonly FieldInfo f_fcs_nightOptic_backing = typeof(FireControlSystem).GetField("<NightOptic>k__BackingField", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         private static readonly FieldInfo f_fcs_authoritativeOptic = typeof(FireControlSystem).GetField("AuthoritativeOptic", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         private static readonly FieldInfo f_snv_postVolume = typeof(SimpleNightVision).GetField("_postVolume", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+        internal static void OnSceneChanged(string sceneName)
+        {
+            if (rigsByVehicleId.Count == 0)
+                return;
+
+            int[] deadKeys = rigsByVehicleId.Where(pair => pair.Value == null).Select(pair => pair.Key).ToArray();
+            for (int i = 0; i < deadKeys.Length; i++)
+                rigsByVehicleId.Remove(deadKeys[i]);
+
+            if (UECommonUtil.IsMenuScene(sceneName))
+                rigsByVehicleId.Clear();
+        }
 
         internal static bool TryApply(Vehicle vehicle, WeaponSystemInfo weaponInfo)
         {
@@ -361,18 +379,28 @@ namespace UnderdogsEnhanced
         {
             CameraSlot[] slots = vehicle.GetComponentsInChildren<CameraSlot>(true);
 
-            CameraSlot slot = slots.FirstOrDefault(s => ContainsHint(s, "milan sight and fcs"))
-                ?? slots.FirstOrDefault(s => ContainsHint(s, "milan"));
+            CameraSlot slot = slots.FirstOrDefault(s => MatchesExactSlotIdentity(s, DaySlotExactNames, DaySlotExactPathSuffixes));
 
             if (slot != null)
+            {
+#if DEBUG
+                UnderdogsDebug.LogSpike($"ResolveDaySlot exact match => {DescribeSlot(slot)}");
+#endif
                 return slot;
+            }
 
             if (weaponInfo.FCS != null)
             {
                 Transform searchRoot = weaponInfo.FCS.transform.parent != null ? weaponInfo.FCS.transform.parent : weaponInfo.FCS.transform;
-                slot = searchRoot.GetComponentsInChildren<CameraSlot>(true).FirstOrDefault(s => ContainsHint(s, "milan"));
+                slot = searchRoot.GetComponentsInChildren<CameraSlot>(true).FirstOrDefault(s => MatchesExactSlotIdentity(s, DaySlotExactNames, DaySlotExactPathSuffixes));
             }
 
+#if DEBUG
+            if (slot != null)
+                UnderdogsDebug.LogSpike($"ResolveDaySlot fallback match => {DescribeSlot(slot)}");
+            else
+                UnderdogsDebug.LogSpikeWarning($"ResolveDaySlot failed for vehicle={vehicle?.FriendlyName ?? "null"} weapon={weaponInfo?.Name ?? "null"}");
+#endif
             return slot;
         }
 
@@ -403,18 +431,71 @@ namespace UnderdogsEnhanced
             return null;
         }
 
-        private static bool ContainsHint(CameraSlot slot, string hint)
+        internal static bool MatchesExactSlotIdentity(CameraSlot slot, string[] exactNames, string[] exactPathSuffixes)
         {
-            if (slot == null || string.IsNullOrEmpty(hint))
+            if (slot == null)
                 return false;
 
-            string combined = string.Concat(
-                slot.name ?? string.Empty,
-                " ",
-                slot.transform != null ? slot.transform.name : string.Empty,
-                " ",
-                slot.transform != null && slot.transform.parent != null ? slot.transform.parent.name : string.Empty).ToLowerInvariant();
-            return combined.Contains(hint.ToLowerInvariant());
+            if (MatchesExactName(slot.name, exactNames))
+                return true;
+
+            if (slot.transform != null && MatchesExactName(slot.transform.name, exactNames))
+                return true;
+
+            if (slot.transform != null && slot.transform.parent != null && MatchesExactName(slot.transform.parent.name, exactNames))
+                return true;
+
+            string path = slot.transform != null ? GetTransformPath(slot.transform) : null;
+            if (!string.IsNullOrEmpty(path))
+            {
+                for (int i = 0; i < exactPathSuffixes.Length; i++)
+                {
+                    if (path.EndsWith(exactPathSuffixes[i], StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool MatchesExactName(string candidate, string[] exactNames)
+        {
+            if (string.IsNullOrEmpty(candidate) || exactNames == null)
+                return false;
+
+            for (int i = 0; i < exactNames.Length; i++)
+            {
+                if (string.Equals(candidate, exactNames[i], StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
+        internal static string DescribeSlot(CameraSlot slot)
+        {
+            if (slot == null)
+                return "slot=null";
+
+            string path = slot.transform != null ? GetTransformPath(slot.transform) : "no_transform";
+            return $"name='{slot.name}' path='{path}' exterior={slot.IsExterior}";
+        }
+
+        private static string GetTransformPath(Transform transform)
+        {
+            if (transform == null)
+                return "null";
+
+            List<string> parts = new List<string>();
+            Transform current = transform;
+            while (current != null)
+            {
+                parts.Add(current.name);
+                current = current.parent;
+            }
+
+            parts.Reverse();
+            return string.Join("/", parts.ToArray());
         }
     }
 
@@ -427,6 +508,7 @@ namespace UnderdogsEnhanced
         private const float ProxyRange = 2500f;
         private const int LockConfirmFrames = 2;
         private const float ManualControlSensitivity = 2.5f;
+        private const float ManualInputDeadzone = 0.02f;
         private const float ThermalLowWidth = 320f;
         private const float ThermalLowHeight = 180f;
         private const float ThermalHighWidth = 1024f;
@@ -436,9 +518,18 @@ namespace UnderdogsEnhanced
         private const float ScopeCanvasRefreshInterval = 0.5f;
         private const float SceneMissileSearchInterval = 0.5f;
         private const float PassedTargetDistanceThreshold = 15f;
+        private static readonly string[] DayStockVisualPaths =
+        {
+            "Optic/Reticle Mesh",
+            "Optic/Quad",
+            "Reticle Mesh",
+            "Quad"
+        };
 
         private static readonly FieldInfo f_cm_allCamSlots = typeof(CameraManager).GetField("_allCamSlots", BindingFlags.Instance | BindingFlags.NonPublic);
         private static readonly FieldInfo f_gu_unguidedMissiles = typeof(MissileGuidanceUnit).GetField("_unguidedMissiles", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_ap_stabActive = typeof(AimablePlatform).GetField("_stabActive", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly FieldInfo f_ap_stabMode = typeof(AimablePlatform).GetField("_stabMode", BindingFlags.Instance | BindingFlags.NonPublic);
         private static Sprite whiteSprite;
         private static Texture2D whiteTexture;
         private static int defaultScopeOwnerId;
@@ -459,6 +550,7 @@ namespace UnderdogsEnhanced
         private UsableOptic thermalOptic;
         private CameraSlot thermalSlot;
         private GameObject thermalSlotObject;
+        private Material cachedWhiteHotBlitMaterial;
         private UsableOptic missileOptic;
         private CameraSlot missileSlot;
         private GameObject missileSlotObject;
@@ -466,6 +558,13 @@ namespace UnderdogsEnhanced
         private Transform aimProxy;
         private CameraSlot latestNonMissileSlot;
         private CameraSlot preLaunchSightSlot;
+        private Vehicle candidateVehicle;
+        private Transform candidateAnchor;
+        private Renderer candidateRenderer;
+        private Collider candidateCollider;
+        private Collider[] candidateColliders;
+        private Renderer[] candidateRenderers;
+        private float candidateDistance = float.PositiveInfinity;
         private Vehicle lockedVehicle;
         private Transform lockedAnchor;
         private Renderer lockedRenderer;
@@ -479,6 +578,7 @@ namespace UnderdogsEnhanced
         private RectTransform overlayReticleRoot;
         private RectTransform overlayTrackingRoot;
         private RectTransform lockBoxRect;
+        private RectTransform topAttackCueRect;
         private readonly List<Graphic> overlayGraphics = new List<Graphic>();
         private FieldInfo opticGuidanceField;
         private PropertyInfo mainOpticProperty;
@@ -489,11 +589,11 @@ namespace UnderdogsEnhanced
         private FieldInfo snvPostVolumeField;
         private string thermalSlotName;
         private bool preferTvControl;
-        private bool lockRequestQueued;
         private bool opticsInitialized;
         private bool lockConfirmed;
         private bool missileViewRequested;
         private bool lastCanControlSpikeLock; // 用于追踪 CanControlSpikeLock 变化
+        private SpikeGuidanceMode lastLoggedGuidanceMode = (SpikeGuidanceMode)(-1);
         private Vector3 lastKnownAimPoint;
         private bool hasLastKnownAimPoint;
         private Bounds cachedTargetBounds;
@@ -508,11 +608,32 @@ namespace UnderdogsEnhanced
         private readonly Vector3[] targetBoundsCorners = new Vector3[8];
         private Transform fnfGuideTransform;
         private Transform mclosGuideTransform;
+        private string lastThermalLogSignature;
+        private string lastLoggedTargetBoundsSource;
+        private string lastLoggedCandidateBoundsSource;
+        private string lastLoggedActiveOptic;
+        private string lastLoggedViewGateSignature;
+        private string lastLoggedManualAimSignature;
         private bool slotRegistrationDirty = true;
         private bool scopeCanvasSuppressed;
         private bool scopeCanvasCacheInitialized;
         private readonly List<Canvas> cachedScopeCanvases = new List<Canvas>();
         private readonly Dictionary<int, ScopeCanvasSnapshot> scopeCanvasSnapshots = new Dictionary<int, ScopeCanvasSnapshot>();
+        private AimablePlatform[] milanPlatforms = new AimablePlatform[0];
+        private bool[] milanPlatformOriginalStabilized = new bool[0];
+        private bool[] milanPlatformOriginalStabActive = new bool[0];
+        private StabilizationMode[] milanPlatformOriginalStabMode = new StabilizationMode[0];
+        private bool milanStabilizerGateApplied;
+        private bool milanFcsOriginalStabsActive;
+        private StabilizationMode milanFcsOriginalStabMode;
+        private string lastLoggedMilanGateState;
+
+        // Top-attack mode fields
+        private bool topAttackModeEnabled = false;          // V键切换状态（发射前）
+        private bool topAttackModeForCurrentMissile = false; // 当前导弹的攻顶模式（发射时捕获）
+        private static readonly string[] TopAttackAlertMessages = { "Direct flight", "Top-attack" };
+
+        internal bool TopAttackModeEnabled => topAttackModeEnabled;
 
         internal bool IsConfigured => vehicle != null && weapon != null && fcs != null && daySlot != null;
 
@@ -530,6 +651,7 @@ namespace UnderdogsEnhanced
             FieldInfo configuredSnvPostVolumeField,
             string configuredThermalSlotName)
         {
+            RestoreMilanStabilizerGate();
             vehicle = configuredVehicle;
             weaponInfo = configuredWeaponInfo;
             weapon = configuredWeaponInfo != null ? configuredWeaponInfo.Weapon : null;
@@ -546,13 +668,188 @@ namespace UnderdogsEnhanced
             snvPostVolumeField = configuredSnvPostVolumeField;
             thermalSlotName = configuredThermalSlotName;
             slotRegistrationDirty = true;
-
+            CacheMilanStabilizerTargets();
             EnsureAimProxy();
             EnsureThermalSlot();
             EnsureFnfGuide();
             ApplyWeaponDefaults();
             EnsureOverlay();
             enabled = true;
+        }
+
+        private void CacheMilanStabilizerTargets()
+        {
+            milanPlatforms = new AimablePlatform[0];
+            milanPlatformOriginalStabilized = new bool[0];
+            milanPlatformOriginalStabActive = new bool[0];
+            milanPlatformOriginalStabMode = new StabilizationMode[0];
+            milanStabilizerGateApplied = false;
+            milanFcsOriginalStabsActive = false;
+            milanFcsOriginalStabMode = default;
+
+            if (vehicle == null || vehicle.AimablePlatforms == null)
+                return;
+
+            List<AimablePlatform> matched = new List<AimablePlatform>(2);
+            for (int i = 2; i <= 3; i++)
+            {
+                if (vehicle.AimablePlatforms.Length <= i)
+                    break;
+
+                AimablePlatform candidate = vehicle.AimablePlatforms[i];
+                if (candidate == null)
+                    continue;
+
+                matched.Add(candidate);
+#if DEBUG
+                UnderdogsDebug.LogSpike($"MILAN stabilizer target => index={i} path={BuildTransformPath(candidate.transform)}");
+#endif
+            }
+
+            milanPlatforms = matched.ToArray();
+            milanPlatformOriginalStabilized = new bool[milanPlatforms.Length];
+            milanPlatformOriginalStabActive = new bool[milanPlatforms.Length];
+            milanPlatformOriginalStabMode = new StabilizationMode[milanPlatforms.Length];
+        }
+
+        private static string BuildTransformPath(Transform transform)
+        {
+            if (transform == null)
+                return null;
+
+            List<string> parts = new List<string>();
+            Transform current = transform;
+            while (current != null)
+            {
+                parts.Add(current.name);
+                current = current.parent;
+            }
+
+            parts.Reverse();
+            return string.Join("/", parts.ToArray());
+        }
+
+        private static bool MatchesAnyPathSuffix(string path, string[] suffixes)
+        {
+            if (string.IsNullOrEmpty(path) || suffixes == null)
+                return false;
+
+            for (int i = 0; i < suffixes.Length; i++)
+            {
+                if (path.EndsWith(suffixes[i], StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private bool ShouldGateMilanStabilizer()
+        {
+            return IsSpikeWeaponSelected();
+        }
+
+        private void UpdateMilanStabilizerGate()
+        {
+            bool shouldDisableStabilizer = ShouldGateMilanStabilizer();
+
+            if (shouldDisableStabilizer)
+            {
+                if (!milanStabilizerGateApplied)
+                    ApplyMilanStabilizerGate();
+            }
+            else if (milanStabilizerGateApplied)
+            {
+                RestoreMilanStabilizerGate();
+            }
+
+#if DEBUG
+            string state = shouldDisableStabilizer ? "milan_stabilizer_off" : "milan_stabilizer_restored";
+            if (!string.Equals(lastLoggedMilanGateState, state, StringComparison.Ordinal))
+            {
+                lastLoggedMilanGateState = state;
+                UnderdogsDebug.LogSpike($"MILAN stabilizer gate => {state}");
+            }
+#endif
+        }
+
+        private void ApplyMilanStabilizerGate()
+        {
+            if ((milanPlatforms == null || milanPlatforms.Length == 0) && fcs == null)
+                return;
+
+            if (fcs != null)
+            {
+                try { milanFcsOriginalStabsActive = fcs.StabsActive; } catch { }
+                try { milanFcsOriginalStabMode = fcs.CurrentStabMode; } catch { }
+                try { fcs.StabsActive = false; } catch { }
+            }
+
+            for (int i = 0; i < milanPlatforms.Length; i++)
+            {
+                AimablePlatform platform = milanPlatforms[i];
+                if (platform == null)
+                    continue;
+
+                milanPlatformOriginalStabilized[i] = platform.Stabilized;
+                milanPlatformOriginalStabActive[i] = GetAimableStabActive(platform);
+                milanPlatformOriginalStabMode[i] = GetAimableStabMode(platform);
+
+                try { platform.Stabilized = false; } catch { }
+                try { f_ap_stabActive?.SetValue(platform, false); } catch { }
+            }
+
+            milanStabilizerGateApplied = true;
+        }
+
+        private void RestoreMilanStabilizerGate()
+        {
+            if (!milanStabilizerGateApplied)
+                return;
+
+            for (int i = 0; i < milanPlatforms.Length; i++)
+            {
+                AimablePlatform platform = milanPlatforms[i];
+                if (platform == null)
+                    continue;
+
+                try { platform.Stabilized = milanPlatformOriginalStabilized[i]; } catch { }
+                try { f_ap_stabActive?.SetValue(platform, milanPlatformOriginalStabActive[i]); } catch { }
+                try { f_ap_stabMode?.SetValue(platform, milanPlatformOriginalStabMode[i]); } catch { }
+            }
+
+            if (fcs != null)
+            {
+                try { fcs.StabsActive = milanFcsOriginalStabsActive; } catch { }
+                try { fcs.CurrentStabMode = milanFcsOriginalStabMode; } catch { }
+            }
+
+            milanStabilizerGateApplied = false;
+        }
+
+        private static bool GetAimableStabActive(AimablePlatform platform)
+        {
+            try
+            {
+                object value = f_ap_stabActive?.GetValue(platform);
+                return value is bool flag && flag;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static StabilizationMode GetAimableStabMode(AimablePlatform platform)
+        {
+            try
+            {
+                object value = f_ap_stabMode?.GetValue(platform);
+                return value is StabilizationMode mode ? mode : default;
+            }
+            catch
+            {
+                return default;
+            }
         }
 
         private void LateUpdate()
@@ -570,12 +867,13 @@ namespace UnderdogsEnhanced
             ApplyWeaponDefaults();
             UpdateMissileReference();
             HandleLockInput();
-            HandleModeToggleInput();
+            HandleTopAttackToggleInput();
             UpdateGuidanceMode();
             UpdateLockTarget();
             UpdateTargetPassFallback();
             UpdateAimProxy();
             UpdateMissileControl();
+            UpdateMilanStabilizerGate();
             EnsureInitialThermalView();
             TryEnterMissileViewIfNeeded();
             UpdateScopeCanvasSuppression();
@@ -586,6 +884,7 @@ namespace UnderdogsEnhanced
 
         private void OnDisable()
         {
+            RestoreMilanStabilizerGate();
             ReleaseScopeCanvasSuppression();
             ReleaseDefaultScopeSuppression();
         }
@@ -593,6 +892,7 @@ namespace UnderdogsEnhanced
         private void OnDestroy()
         {
             MarderSpikeSystem.UnregisterRig(this);
+            RestoreMilanStabilizerGate();
             ReleaseScopeCanvasSuppression();
             ReleaseDefaultScopeSuppression();
         }
@@ -609,26 +909,44 @@ namespace UnderdogsEnhanced
             CachePreLaunchSightSlot();
             activeMissile = round;
             closestMissileTargetDistance = float.PositiveInfinity;
-            bool startManual = preferTvControl || !HasLockTarget();
+
+            // Capture the selected flight mode at launch. Lock state can change later.
+            // Check if target distance supports top-attack (min 650m)
+            bool canUseTopAttack = topAttackModeEnabled && HasLockTarget();
+            if (canUseTopAttack)
+            {
+                float targetDistance = lockedDistance;
+                if (!SpikeTopAttackTracker.SupportsTopAttack(targetDistance))
+                {
+                    // Distance too short for top-attack, auto-switch to direct mode
+                    topAttackModeForCurrentMissile = false;
+                    ResolveAlertHud()?.AddAlertMessage($"Direct flight (< 650m)", 3f);
+#if DEBUG
+                    UnderdogsDebug.LogSpike($"Top-attack disabled: distance {targetDistance:F0}m < {SpikeTopAttackTracker.MinTopAttackDistance}m minimum");
+#endif
+                }
+                else
+                {
+                    topAttackModeForCurrentMissile = true;
+                }
+            }
+            else
+            {
+                topAttackModeForCurrentMissile = false;
+            }
+
+            bool startManual = !HasLockTarget();
             preferTvControl = startManual;
             SyncMissileFollow(round);
             MarderSpikeMissileCameraFollow follow = GetMissileFollow(round);
             if (follow == null)
                 return;
 
-            if (startManual)
-            {
-                // MCLOS模式：也进入导弹视角，但标记为手动模式（可按MMB接管）
-                missileViewRequested = false;
-                follow.SetManualModeActive(true);
-                follow.EnterMissileView(true, GetPreferredReturnSlotForMissile());
-            }
-            else
-            {
-                // FNF模式：自动进入导弹视角
-                missileViewRequested = true;
-                follow.EnterMissileView(false, GetPreferredReturnSlotForMissile());
-            }
+            // Always remember the latest live missile, but only actually attach when the
+            // player is on the SPIKE weapon and in an allowed interior view.
+            missileViewRequested = true;
+            follow.SetManualModeActive(startManual);
+            follow.EnterMissileView(startManual, GetPreferredReturnSlotForMissile());
         }
 
         internal GameObject GetMissileCameraDonorObject()
@@ -651,48 +969,50 @@ namespace UnderdogsEnhanced
             return FindPreferredReturnSlot();
         }
 
-        internal bool PreferManualMissileControl => preferTvControl;
+        internal bool PreferManualMissileControl => ShouldUseManualMissileControl();
 
         internal bool IsManualMissileViewActive()
         {
-            if (!preferTvControl || activeMissile == null || !IsPlayerControllingThisRig())
-                return false;
-
-            CameraManager cameraManager = CameraManager.Instance;
-            if (cameraManager != null && cameraManager.ExteriorMode)
-                return false;
-
-            CameraSlot activeSlot = CameraSlot.ActiveInstance;
-            if (activeSlot == missileSlot)
-                return true;
-
-            return activeSlot != null && activeSlot != missileSlot && SlotBelongsToVehicle(activeSlot);
+            return ShouldUseManualMissileControl();
         }
 
         internal bool TryApplyManualAimInput(ref float horizontal, ref float vertical)
         {
-            if (!IsManualMissileViewActive() || guidanceUnit == null || activeMissile == null || activeMissile.Info == null)
+            float rawHorizontal = horizontal;
+            float rawVertical = vertical;
+
+            if (!ShouldUseManualMissileControl() || guidanceUnit == null || activeMissile == null || activeMissile.Info == null)
+            {
+                SetManualAimAngularVelocity(Vector2.zero, "manual_gate_closed");
                 return false;
+            }
 
             bool applyTuning = BMP1MCLOSAmmo.MclosInputTuning.ShouldApplyNow(true);
             BMP1MCLOSAmmo.MclosInputTuning.ApplyDynamicTurnSpeed(activeMissile.Info, horizontal, vertical, applyTuning);
-            horizontal = BMP1MCLOSAmmo.MclosInputTuning.ProcessAxis(horizontal, applyTuning);
-            vertical = BMP1MCLOSAmmo.MclosInputTuning.ProcessAxis(vertical, applyTuning);
+            horizontal = ApplyManualInputDeadzone(BMP1MCLOSAmmo.MclosInputTuning.ProcessAxis(horizontal, applyTuning));
+            vertical = ApplyManualInputDeadzone(BMP1MCLOSAmmo.MclosInputTuning.ProcessAxis(vertical, applyTuning));
 
             EnsureMclosGuide();
-            guidanceUnit.ManualAimAngularVelocity = new Vector2(horizontal, vertical) * ManualControlSensitivity;
+            SetManualAimAngularVelocity(new Vector2(horizontal, vertical) * ManualControlSensitivity,
+                Mathf.Approximately(horizontal, 0f) && Mathf.Approximately(vertical, 0f) ? "manual_deadzone" : "manual_input");
             activeMissile.SkipGuidanceLockout = true;
             activeMissile.Guided = true;
 
             if (mclosGuideTransform != null && guidanceUnit.AimElement != mclosGuideTransform)
                 guidanceUnit.AimElement = mclosGuideTransform;
 
+#if DEBUG
+            UnderdogsDebug.LogSpike($"Manual input raw=({rawHorizontal:F3},{rawVertical:F3}) tuned=({horizontal:F3},{vertical:F3}) mav={guidanceUnit.ManualAimAngularVelocity}");
+#endif
             return true;
         }
 
         private void SetManualControlActive(bool active, bool forceMissileView)
         {
             preferTvControl = active;
+
+            if (!active)
+                SetManualAimAngularVelocity(Vector2.zero, "manual_disabled");
 
             if (activeMissile == null)
                 return;
@@ -704,10 +1024,11 @@ namespace UnderdogsEnhanced
             if (follow == null)
                 return;
 
+            bool manualMode = !HasLockTarget();
+            follow.SetManualModeActive(manualMode);
+
             if (forceMissileView)
-                follow.EnterMissileView(active, GetPreferredReturnSlotForMissile());
-            else
-                follow.SetManualModeActive(active);
+                follow.EnterMissileView(manualMode, GetPreferredReturnSlotForMissile());
         }
 
         private void DisableInfraredTracking()
@@ -718,6 +1039,10 @@ namespace UnderdogsEnhanced
             SpikeInfraredTracker tracker = activeMissile.GetComponent<SpikeInfraredTracker>();
             if (tracker != null)
                 Destroy(tracker);
+
+            SpikeTopAttackTracker topTracker = activeMissile.GetComponent<SpikeTopAttackTracker>();
+            if (topTracker != null)
+                Destroy(topTracker);
         }
 
         internal void OnMissileFollowReady(MarderSpikeMissileCameraFollow follow)
@@ -726,8 +1051,18 @@ namespace UnderdogsEnhanced
                 return;
 
             SetMissileSlot(follow.MissileSlot);
-            if (preferTvControl)
-                follow.SetManualModeActive(true);
+            follow.SetManualModeActive(activeMissile != null && !HasLockTarget());
+        }
+
+        internal bool ShouldHoldMissileCamera(MarderSpikeMissileCameraFollow follow)
+        {
+            if (follow == null || follow.Round == null || follow.Round.IsDestroyed)
+                return false;
+
+            if (activeMissile == null || follow.Round != activeMissile)
+                return false;
+
+            return CanAutoAttachSelectedMissileView();
         }
 
         internal void OnMissileFollowDestroyed(MarderSpikeMissileCameraFollow follow)
@@ -775,6 +1110,8 @@ namespace UnderdogsEnhanced
 
         private void ApplyWeaponDefaults()
         {
+            EnsureThermalSlot();
+
             if (fcs != null)
             {
                 if (fcs.MaxLaserRange < 4000f)
@@ -797,6 +1134,7 @@ namespace UnderdogsEnhanced
                 try { dayOptic.enabled = true; } catch { }
                 try { if (!dayOptic.gameObject.activeSelf) dayOptic.gameObject.SetActive(true); } catch { }
                 SuppressOpticPresentation(dayOptic, false);
+                SuppressDayStockReticle(dayOptic);
             }
 
             if (thermalOptic != null)
@@ -811,7 +1149,8 @@ namespace UnderdogsEnhanced
             if (!opticsInitialized)
             {
                 try { fcs?.RegisterOptic(dayOptic); } catch { }
-                TryAssignMainAndNightOptics(dayOptic, null);
+                try { if (thermalOptic != null) fcs?.RegisterOptic(thermalOptic); } catch { }
+                TryAssignMainAndNightOptics(dayOptic, thermalOptic);
                 TryAssignAuthoritativeOptic(dayOptic);
                 try { daySlot.WasUsingNightMode = false; } catch { }
                 try { if (thermalSlot != null) thermalSlot.WasUsingNightMode = true; } catch { }
@@ -865,80 +1204,203 @@ namespace UnderdogsEnhanced
 
         private void EnsureInitialThermalView()
         {
-            // SPIKE炮镜独立热成像：只在进入SPIKE炮镜槽位时切换到热成像
-            // 不影响车长视角等其他槽位
-
-            // 非SPIKE武器：不干预，让游戏原生槽位记忆机制工作
-            if (!IsSpikeWeaponSelected())
-                return;
-
-            if (activeMissile != null)
+            if (!IsSpikeWeaponSelected() && !IsMissileCameraActive())
                 return;
 
             CameraSlot activeSlot = CameraSlot.ActiveInstance;
-            // 只在SPIKE炮镜槽位（白光或热成像槽）时处理
-            if (activeSlot != daySlot && activeSlot != thermalSlot)
+            UsableOptic desiredOptic = null;
+
+            if (IsMissileCameraActive())
+                desiredOptic = thermalOptic != null ? thermalOptic : missileOptic;
+            else if (activeSlot == daySlot)
+                desiredOptic = dayOptic;
+            else if (activeSlot == thermalSlot)
+                desiredOptic = thermalOptic;
+
+            if (desiredOptic == null)
                 return;
 
-            // 如果当前在白光槽，切换到热成像槽
-            if (activeSlot == daySlot && thermalSlot != null)
+            TryAssignAuthoritativeOptic(desiredOptic);
+            try { fcs?.NotifyActiveOpticChanged(desiredOptic); } catch { }
+
+#if DEBUG
+            string opticSignature = $"{desiredOptic.name}|slot={activeSlot?.name ?? "missile"}|missileView={IsMissileCameraActive()}";
+            if (!string.Equals(lastLoggedActiveOptic, opticSignature, StringComparison.Ordinal))
             {
-                CameraSlot.SetActiveSlot(thermalSlot);
-                TryAssignAuthoritativeOptic(thermalOptic);
-                try { fcs?.NotifyActiveOpticChanged(thermalOptic); } catch { }
+                lastLoggedActiveOptic = opticSignature;
+                UnderdogsDebug.LogSpike($"Active optic => {opticSignature}");
             }
+#endif
+
+            if (desiredOptic == thermalOptic || desiredOptic == missileOptic)
+                LogThermalState("Sync SPIKE thermal optic", thermalSlotObject, thermalSlot, thermalSlotObject != null ? thermalSlotObject.GetComponent<SimpleNightVision>() : null, thermalSlotObject != null ? thermalSlotObject.transform.Find("FLIR Post Processing - Green(Clone)/FLIR Only Volume")?.GetComponent<PostProcessVolume>() : null);
         }
 
         private void TryEnterMissileViewIfNeeded()
         {
-            // 有导弹发射后，进入SPIKE炮镜视角自动切换到导弹摄像机
             if (activeMissile == null || activeMissile.IsDestroyed)
                 return;
 
             if (!missileViewRequested)
                 return;
 
-            CameraSlot activeSlot = CameraSlot.ActiveInstance;
-            // 只在进入SPIKE炮镜槽位时切换到导弹视角
-            if (activeSlot != daySlot && activeSlot != thermalSlot)
+            if (!CanAutoAttachSelectedMissileView())
                 return;
 
             MarderSpikeMissileCameraFollow follow = GetMissileFollow(activeMissile);
             if (follow == null)
                 return;
 
-            // 切换到导弹视角
-            follow.EnterMissileView(preferTvControl, GetPreferredReturnSlotForMissile());
-            // 只执行一次
+            follow.EnterMissileView(!HasLockTarget(), GetPreferredReturnSlotForMissile());
             missileViewRequested = false;
         }
 
         private void EnsureThermalSlot()
         {
-            if (daySlot == null)
+            if (daySlot == null || dayOptic == null)
                 return;
 
-            if (thermalSlot != null)
+            if (thermalOptic == null || thermalOptic.slot == null)
+                thermalOptic = GetOrCreateThermalOptic();
+
+            if (thermalOptic == null || thermalOptic.slot == null)
             {
-                RefreshSlotTransform(thermalSlotObject != null ? thermalSlotObject.transform : thermalSlot.transform, daySlot.transform);
-                if (thermalSlot.gameObject != null)
-                    thermalSlot.gameObject.name = thermalSlotName ?? "Spike Thermal";
-                LinkThermalSlot();
+                thermalSlot = null;
+                thermalSlotObject = null;
                 return;
             }
 
-            thermalSlotObject = new GameObject(thermalSlotName ?? "Spike Thermal");
-            thermalSlotObject.transform.SetParent(daySlot.transform.parent, false);
-            thermalSlot = thermalSlotObject.AddComponent<CameraSlot>();
-            thermalOptic = null;
-            slotRegistrationDirty = true;
+            thermalSlot = thermalOptic.slot;
+            thermalSlotObject = thermalSlot != null ? thermalSlot.gameObject : thermalOptic.gameObject;
 
-            RefreshSlotTransform(thermalSlotObject.transform, daySlot.transform);
+            RefreshOpticTransform(thermalOptic.transform, dayOptic.transform);
+            if (thermalSlotObject != null)
+                RefreshSlotTransform(thermalSlotObject.transform, daySlot.transform);
+
+            ConfigureThermalOptic(thermalOptic);
             ConfigureThermalCameraSlot(thermalSlot, daySlot.DefaultFov, daySlot.OtherFovs);
-            if (thermalSlot != null && thermalSlot.gameObject != null)
+            if (thermalSlot.gameObject != null)
                 thermalSlot.gameObject.name = thermalSlotName ?? "Spike Thermal";
             LinkThermalSlot();
             SetupThermalPost(thermalSlotObject, thermalSlot);
+
+            // 禁用热成像槽中的Quad和Scope sprite
+            SuppressThermalVisuals(thermalSlotObject);
+        }
+
+        private void SuppressThermalVisuals(GameObject thermalSlotObj)
+        {
+            if (thermalSlotObj == null) return;
+
+            try
+            {
+                // 禁用 Quad: Spike Thermal/Spike Thermal/Quad
+                Transform thermalRoot = thermalSlotObj.transform.Find("Spike Thermal");
+                if (thermalRoot != null)
+                {
+                    Transform quad = thermalRoot.Find("Quad");
+                    if (quad != null && quad.gameObject.activeSelf)
+                        quad.gameObject.SetActive(false);
+                }
+
+                // 禁用 Scope sprite: Spike Thermal/camera/Scope
+                Transform cameraRoot = thermalSlotObj.transform.Find("camera");
+                if (cameraRoot != null)
+                {
+                    Transform scope = cameraRoot.Find("Scope");
+                    if (scope != null)
+                    {
+                        SpriteRenderer sr = scope.GetComponent<SpriteRenderer>();
+                        if (sr != null && sr.enabled)
+                            sr.enabled = false;
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                UnderdogsDebug.LogSpikeWarning($"SuppressThermalVisuals failed: {ex.Message}");
+            }
+        }
+
+        private UsableOptic GetOrCreateThermalOptic()
+        {
+            UsableOptic existing = FindExistingThermalOptic();
+            if (existing != null && existing.slot != null)
+                return existing;
+
+            return CreateThermalOpticClone();
+        }
+
+        private UsableOptic FindExistingThermalOptic()
+        {
+            if (vehicle == null)
+                return null;
+
+            MarderSpikeThermalOpticMarker[] markers = vehicle.GetComponentsInChildren<MarderSpikeThermalOpticMarker>(true);
+            for (int i = 0; i < markers.Length; i++)
+            {
+                MarderSpikeThermalOpticMarker marker = markers[i];
+                UsableOptic optic = marker != null ? marker.GetComponent<UsableOptic>() : null;
+                if (optic == null || optic.slot == null)
+                    continue;
+
+                return optic;
+            }
+
+            return null;
+        }
+
+        private UsableOptic CreateThermalOpticClone()
+        {
+            if (dayOptic == null)
+                return null;
+
+            GameObject source = dayOptic.gameObject;
+            Transform parent = dayOptic.transform.parent != null ? dayOptic.transform.parent : daySlot.transform.parent;
+            if (source == null || parent == null)
+                return null;
+
+            GameObject clone = Instantiate(source, parent);
+            clone.name = thermalSlotName ?? "Spike Thermal";
+            if (!clone.activeSelf)
+                clone.SetActive(true);
+
+            UsableOptic optic = clone.GetComponent<UsableOptic>();
+            CameraSlot slot = optic != null ? optic.slot : clone.GetComponent<CameraSlot>();
+            if (optic == null || slot == null)
+            {
+                Destroy(clone);
+                return null;
+            }
+
+            MarderSpikeThermalOpticMarker marker = clone.GetComponent<MarderSpikeThermalOpticMarker>();
+            if (marker == null)
+                marker = clone.AddComponent<MarderSpikeThermalOpticMarker>();
+
+            slotRegistrationDirty = true;
+            return optic;
+        }
+
+        private void ConfigureThermalOptic(UsableOptic optic)
+        {
+            if (optic == null)
+                return;
+
+            try { optic.FCS = fcs; } catch { }
+            try { optic.GuidanceLight = true; } catch { }
+            try { optic.RotateAzimuth = true; } catch { }
+            try { optic.CantCorrect = true; } catch { }
+            try { optic.CantCorrectMaxSpeed = 5f; } catch { }
+            try { optic.Alignment = OpticAlignment.BoresightStabilized; } catch { }
+            try { optic.ForceHorizontalReticleAlign = true; } catch { }
+            try { optic.ZeroOutInvalidRange = true; } catch { }
+            try { optic.post = null; } catch { }
+            try
+            {
+                if (optic.reticleMesh != null)
+                    optic.reticleMesh.Clear();
+            }
+            catch { }
         }
 
         private void LinkThermalSlot()
@@ -947,6 +1409,11 @@ namespace UnderdogsEnhanced
                 return;
 
             UECommonUtil.LinkSightSlots(daySlot, thermalSlot);
+            try { daySlot.LinkedDaySight = null; } catch { }
+            try { daySlot.IsLinkedNightSight = false; } catch { }
+            try { thermalSlot.LinkedNightSight = null; } catch { }
+            try { if (thermalOptic != null) thermalOptic.slot = thermalSlot; } catch { }
+            try { if (dayOptic != null) dayOptic.slot = daySlot; } catch { }
             try { daySlot.enabled = true; } catch { }
             try { thermalSlot.enabled = true; } catch { }
             try { daySlot.RefreshAvailability(); } catch { }
@@ -1014,6 +1481,16 @@ namespace UnderdogsEnhanced
             destination.localScale = source.localScale;
         }
 
+        private void RefreshOpticTransform(Transform destination, Transform source)
+        {
+            if (destination == null || source == null)
+                return;
+
+            destination.localPosition = source.localPosition;
+            destination.localRotation = source.localRotation;
+            destination.localScale = source.localScale;
+        }
+
         private void ConfigureThermalCameraSlot(CameraSlot slot, float defaultFov, float[] otherFovs)
         {
             if (slot == null)
@@ -1023,7 +1500,7 @@ namespace UnderdogsEnhanced
             slot.IsExterior = false;
             slot.BaseBlur = 0f;
             slot.OverrideFLIRResolution = true;
-            slot.CanToggleFlirPolarity = true;
+            slot.CanToggleFlirPolarity = false;
             slot.FLIRWidth = GetConfiguredFlirWidth();
             slot.FLIRHeight = GetConfiguredFlirHeight();
             slot.FLIRFilterMode = FilterMode.Point;
@@ -1032,7 +1509,7 @@ namespace UnderdogsEnhanced
             slot.OtherFovs = otherFovs != null ? (float[])otherFovs.Clone() : new float[0];
             slot.SpriteType = daySlot != null ? daySlot.SpriteType : CameraSpriteManager.SpriteType.DefaultScope;
 
-            Material blitMaterial = GetConfiguredBlitMaterial();
+            Material blitMaterial = GetWhiteHotBlitMaterial();
             if (blitMaterial != null)
                 slot.FLIRBlitMaterialOverride = blitMaterial;
         }
@@ -1042,7 +1519,7 @@ namespace UnderdogsEnhanced
             if (slotObject == null || slot == null)
                 return;
 
-            GameObject flirPrefab = UEResourceController.GetThermalFlirPostPrefab();
+            GameObject flirPrefab = MarderSpikeAssets.GetThermalPostPrefab();
             if (flirPrefab == null)
                 return;
 
@@ -1052,19 +1529,53 @@ namespace UnderdogsEnhanced
                 Destroy(existingVolume);
 
             Transform existingPost = slotObject.transform.Find("FLIR Post Processing - Green(Clone)");
-            if (existingPost != null)
-                Destroy(existingPost.gameObject);
+            GameObject post = existingPost != null ? existingPost.gameObject : Instantiate(flirPrefab, slotObject.transform);
+            if (!post.activeSelf)
+                post.SetActive(true);
 
-            GameObject post = Instantiate(flirPrefab, slotObject.transform);
             Transform mainVolume = post.transform.Find("MainCam Volume");
             if (mainVolume != null)
                 mainVolume.gameObject.SetActive(false);
 
             PostProcessVolume flirOnlyVolume = post.transform.Find("FLIR Only Volume")?.GetComponent<PostProcessVolume>();
             if (flirOnlyVolume != null)
+            {
                 flirOnlyVolume.enabled = true;
+                flirOnlyVolume.weight = 1f;
+                flirOnlyVolume.priority = 100f;
+            }
 
             try { snvPostVolumeField?.SetValue(snv, flirOnlyVolume); } catch { }
+            ApplyWhiteHotThermalState(slot, snv, flirOnlyVolume);
+        }
+
+        private void ApplyWhiteHotThermalState(CameraSlot slot, SimpleNightVision snv, PostProcessVolume flirOnlyVolume)
+        {
+            if (slot == null)
+                return;
+
+            slot.VisionType = NightVisionType.Thermal;
+            slot.OverrideFLIRResolution = true;
+            slot.CanToggleFlirPolarity = false;
+            slot.WasUsingNightMode = true;
+
+            Material whiteHot = GetWhiteHotBlitMaterial();
+            if (whiteHot != null)
+                slot.FLIRBlitMaterialOverride = whiteHot;
+            else
+                MelonLogger.Warning("[Marder Spike] White-hot FLIR material unavailable for thermal slot.");
+
+            if (snv != null)
+                snv.enabled = true;
+
+            if (flirOnlyVolume != null)
+            {
+                flirOnlyVolume.enabled = true;
+                flirOnlyVolume.weight = 1f;
+                flirOnlyVolume.priority = 100f;
+            }
+
+            LogThermalState("Configured thermal slot", slot.gameObject, slot, snv, flirOnlyVolume);
         }
 
         internal void ConfigureMissileViewSlot(GameObject slotObject, CameraSlot slot, UsableOptic optic)
@@ -1087,20 +1598,164 @@ namespace UnderdogsEnhanced
             try { optic.post = null; } catch { }
             try { optic.GuidanceLight = true; } catch { }
 
-            if (thermal)
-            {
-                try
-                {
-                    if (optic.reticleMesh != null)
-                        optic.reticleMesh.Clear();
-                }
-                catch { }
+            if (!thermal)
+                return;
 
-                try { optic.reticleMesh = null; } catch { }
+            try
+            {
+                if (optic.reticleMesh != null)
+                    optic.reticleMesh.Clear();
             }
+            catch { }
+
+            try { optic.reticleMesh = null; } catch { }
 
             DisableOpticReticleMeshes(optic.transform, optic);
             SetScopeSpriteRendererEnabled(optic.transform, false);
+        }
+
+        private static string NormalizeManualAimLogReason(Vector2 angularVelocity, string reason)
+        {
+            if (angularVelocity.sqrMagnitude <= 0.000001f)
+            {
+                switch (reason)
+                {
+                    case "manual_gate_closed":
+                    case "mclos_view_inactive":
+                    case "non_mclos":
+                    case "manual_disabled":
+                        return "manual_inactive";
+                }
+            }
+
+            return string.IsNullOrEmpty(reason) ? "unknown" : reason;
+        }
+
+        private static void SuppressDayStockReticle(UsableOptic optic)
+        {
+            if (optic == null)
+                return;
+
+            string BuildRelativePath(Transform node)
+            {
+                if (node == null)
+                    return "null";
+
+                string pathValue = node.name;
+                while (node.parent != null && node.parent != optic.transform)
+                {
+                    node = node.parent;
+                    pathValue = node.name + "/" + pathValue;
+                }
+
+                return pathValue;
+            }
+
+            bool IsKnownDayStockVisualPath(string pathValue)
+            {
+                if (string.IsNullOrEmpty(pathValue))
+                    return false;
+
+                for (int i = 0; i < DayStockVisualPaths.Length; i++)
+                {
+                    if (string.Equals(pathValue, DayStockVisualPaths[i], StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+
+                return false;
+            }
+
+            void DisableKnownStockVisualNode(Transform node)
+            {
+                if (node == null)
+                    return;
+
+                Renderer[] renderers = node.GetComponentsInChildren<Renderer>(true);
+                for (int i = 0; i < renderers.Length; i++)
+                {
+                    if (renderers[i] != null && renderers[i].enabled)
+                        renderers[i].enabled = false;
+                }
+
+                Graphic[] graphics = node.GetComponentsInChildren<Graphic>(true);
+                for (int i = 0; i < graphics.Length; i++)
+                {
+                    if (graphics[i] != null && graphics[i].enabled)
+                        graphics[i].enabled = false;
+                }
+
+                PostMeshComp[] postMeshes = node.GetComponentsInChildren<PostMeshComp>(true);
+                for (int i = 0; i < postMeshes.Length; i++)
+                {
+                    if (postMeshes[i] != null && postMeshes[i].enabled)
+                        postMeshes[i].enabled = false;
+                }
+
+                if (node.gameObject.activeSelf)
+                    node.gameObject.SetActive(false);
+            }
+
+            bool ShouldSuppressReticleMesh(ReticleMesh reticleMesh)
+            {
+                if (reticleMesh == null || reticleMesh.transform == null)
+                    return false;
+
+                Transform cameraRoot = optic.transform.Find("camera");
+                if (cameraRoot != null && reticleMesh.transform.IsChildOf(cameraRoot))
+                    return false;
+
+                string pathValue = BuildRelativePath(reticleMesh.transform);
+                if (pathValue.StartsWith("camera/", StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                return true;
+            }
+
+            try
+            {
+                Transform[] transforms = optic.GetComponentsInChildren<Transform>(true);
+                for (int i = 0; i < transforms.Length; i++)
+                {
+                    Transform node = transforms[i];
+                    string pathValue = BuildRelativePath(node);
+                    if (IsKnownDayStockVisualPath(pathValue))
+                        DisableKnownStockVisualNode(node);
+                }
+
+                ReticleMesh[] reticleMeshes = optic.GetComponentsInChildren<ReticleMesh>(true);
+                for (int i = 0; i < reticleMeshes.Length; i++)
+                {
+                    ReticleMesh reticleMesh = reticleMeshes[i];
+                    if (!ShouldSuppressReticleMesh(reticleMesh))
+                        continue;
+
+                    if (reticleMesh.gameObject.activeSelf)
+                        reticleMesh.gameObject.SetActive(false);
+                    if (reticleMesh.enabled)
+                        reticleMesh.enabled = false;
+
+                    SkinnedMeshRenderer skinnedMeshRenderer = reticleMesh.GetComponent<SkinnedMeshRenderer>();
+                    if (skinnedMeshRenderer != null && skinnedMeshRenderer.enabled)
+                        skinnedMeshRenderer.enabled = false;
+
+                    PostMeshComp[] postMeshes = reticleMesh.GetComponentsInChildren<PostMeshComp>(true);
+                    for (int j = 0; j < postMeshes.Length; j++)
+                    {
+                        if (postMeshes[j] != null && postMeshes[j].enabled)
+                            postMeshes[j].enabled = false;
+                    }
+                }
+
+                if (optic.reticleMesh != null)
+                {
+                    try { optic.reticleMesh.Clear(); } catch { }
+                    optic.reticleMesh = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Marder Spike] Failed to suppress day reticle: {ex.Message}");
+            }
         }
 
         private void DisableOpticReticleMeshes(Transform root, UsableOptic optic)
@@ -1152,9 +1807,9 @@ namespace UnderdogsEnhanced
                 string combined = string.Concat(
                     renderer.name ?? string.Empty,
                     " ",
-                    renderer.transform.parent != null ? renderer.transform.parent.name : string.Empty).ToLowerInvariant();
+                    renderer.transform.parent != null ? renderer.transform.parent.name : string.Empty);
 
-                if (!combined.Contains("scope"))
+                if (!combined.Equals("Scope Sprite Scope", StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 renderer.enabled = enabled;
@@ -1163,52 +1818,21 @@ namespace UnderdogsEnhanced
 
         private void HandleLockInput()
         {
-            // 调试：每帧检查组件状态（仅当按下中键时才输出）
             bool mmbPressed = Input.GetMouseButtonDown(2);
-            if (mmbPressed )
-            {
-#if DEBUG
-                UnderdogsDebug.LogSpike($"MMB pressed! enabled={enabled}, IsConfigured={IsConfigured}, lockConfirmed={lockConfirmed}, activeMissile={activeMissile != null}, preferTvControl={preferTvControl}");
-#endif
-            }
-
             if (!mmbPressed)
                 return;
 
-            if (!IsPlayerControllingThisRig())
-            {
-#if DEBUG
-                UnderdogsDebug.LogSpike("HandleLockInput: not controlling rig");
-#endif
+            if (!CanControlSpikeLock())
                 return;
-            }
-
-            CameraManager cameraManager = CameraManager.Instance;
-            CameraSlot activeSlot = CameraSlot.ActiveInstance;
-
-            // 允许导弹视角下的锁定（即使ExteriorMode为true）
-            if (cameraManager != null && cameraManager.ExteriorMode && activeSlot != missileSlot)
-            {
-#if DEBUG
-                UnderdogsDebug.LogSpike($"HandleLockInput: exterior mode, missileSlot exists={missileSlot != null}");
-#endif
-                return;
-            }
-
-            // 白光槽、热成像槽、导弹槽都能锁定
-            if (activeSlot != thermalSlot && activeSlot != missileSlot && activeSlot != daySlot)
-            {
-#if DEBUG
-                UnderdogsDebug.LogSpike($"HandleLockInput: wrong slot, thermalSlot exists={thermalSlot != null}, daySlot exists={daySlot != null}, missileSlot exists={missileSlot != null}");
-#endif
-                return;
-            }
 
             if (HasLockTarget())
             {
                 ClearLockTarget("user_manual_clear");
                 if (activeMissile != null)
+                {
                     SetManualControlActive(true, true);
+                    missileViewRequested = true;
+                }
 
 #if DEBUG
                 UnderdogsDebug.LogSpike("Lock cleared");
@@ -1216,67 +1840,113 @@ namespace UnderdogsEnhanced
                 return;
             }
 
-            // MCLOS模式下且导弹已发射：中键切换到导弹视角并请求锁定
-            if (preferTvControl && activeMissile != null)
+            if (activeMissile != null)
             {
                 MarderSpikeMissileCameraFollow follow = GetMissileFollow(activeMissile);
                 if (follow != null)
-                {
-                    // 切换到导弹视角
                     follow.EnterMissileView(true, GetPreferredReturnSlotForMissile());
-                    // 请求锁定（通过导弹视角的摄像机进行射线检测）
-                    missileViewRequested = true;
-                }
             }
 
-            lockRequestQueued = true;
-#if DEBUG
-            UnderdogsDebug.LogSpike("Lock requested");
-#endif
+            TryEngageTrackingCandidate();
         }
 
-        private void HandleModeToggleInput()
+        private bool TryEngageTrackingCandidate()
         {
-            if (activeMissile == null)
+            if (!HasTrackingCandidate())
+                return false;
+
+            ApplyLockTarget(candidateVehicle, candidateAnchor, candidateRenderer, candidateDistance);
+            if (TryGetLockAimPoint(out Vector3 aimPoint))
+            {
+                lastKnownAimPoint = aimPoint;
+                hasLastKnownAimPoint = true;
+            }
+
+            lockConfirmed = true;
+
+            if (activeMissile != null)
+            {
+                preferTvControl = false;
+
+                // Set up appropriate tracker based on top-attack mode captured at launch
+                if (topAttackModeForCurrentMissile)
+                {
+                    // Use top-attack tracker
+                    SpikeTopAttackTracker topTracker = activeMissile.GetComponent<SpikeTopAttackTracker>();
+                    if (topTracker == null)
+                    {
+                        // Remove regular tracker if exists
+                        SpikeInfraredTracker regularTracker = activeMissile.GetComponent<SpikeInfraredTracker>();
+                        if (regularTracker != null)
+                            Destroy(regularTracker);
+
+                        topTracker = activeMissile.gameObject.AddComponent<SpikeTopAttackTracker>();
+                    }
+
+                    topTracker.SetInitialLock(lockedVehicle, lockedAnchor);
+                }
+                else
+                {
+                    // Use regular infrared tracker
+                    SpikeInfraredTracker tracker = activeMissile.GetComponent<SpikeInfraredTracker>();
+                    if (tracker == null)
+                    {
+                        tracker = activeMissile.gameObject.AddComponent<SpikeInfraredTracker>();
+                    }
+
+                    tracker.SetInitialLock(lockedVehicle, lockedAnchor);
+                }
+
+                MarderSpikeMissileCameraFollow follow = GetMissileFollow(activeMissile);
+                if (follow != null)
+                    follow.SetManualModeActive(false);
+            }
+
+            return true;
+        }
+
+        private void HandleTopAttackToggleInput()
+        {
+            // Only process V key when player is controlling this rig
+            if (!IsPlayerControllingThisRig())
+                return;
+
+            // Only process when Spike weapon is selected
+            if (!IsSpikeWeaponSelected())
+                return;
+
+            // Only allow toggle when player is in interior view (not exterior)
+            if (!CanUseInteriorSpikeView())
+                return;
+
+            // Do not allow toggle while missile is already flying
+            if (activeMissile != null && !activeMissile.IsDestroyed)
                 return;
 
             if (!Input.GetKeyDown(KeyCode.V))
                 return;
 
-            if (!IsSpikeWeaponSelected())
-                return;
+            // Toggle the mode
+            topAttackModeEnabled = !topAttackModeEnabled;
 
-            CameraManager cameraManager = CameraManager.Instance;
-            if (cameraManager != null && cameraManager.ExteriorMode)
-                return;
-
-            MarderSpikeMissileCameraFollow follow = GetMissileFollow(activeMissile);
-            if (follow == null)
-                return;
-
-            if (!preferTvControl)
-            {
-                SetManualControlActive(true, true);
-#if DEBUG
-                UnderdogsDebug.LogSpike("Mode: FnF → MCLOS");
-#endif
-                return;
-            }
-
-            if (preferTvControl && HasLockTarget())
-            {
-                SetManualControlActive(false, false);
-#if DEBUG
-                UnderdogsDebug.LogSpike("Mode: MCLOS → FnF");
-#endif
-                return;
-            }
+            // Show HUD alert
+            ResolveAlertHud()?.AddAlertMessage(TopAttackAlertMessages[topAttackModeEnabled ? 1 : 0], 2f);
 
 #if DEBUG
-            UnderdogsDebug.LogSpikeWarning("Cannot enter FnF: no lock");
-
-            UnderdogsDebug.LogSpike($"Mode toggle => {(preferTvControl ? "MCLOS" : "FnF")}");
+            UnderdogsDebug.LogSpike($"Top-attack mode toggled => {(topAttackModeEnabled ? "ENABLED" : "DISABLED")}");
 #endif
+        }
+
+        private static GHPC.UI.Hud.AlertHud cachedAlertHud;
+        private static GHPC.UI.Hud.AlertHud ResolveAlertHud()
+        {
+            if (cachedAlertHud != null)
+                return cachedAlertHud;
+
+            GameObject app = GameObject.Find("_APP_GHPC_");
+            Transform alertTransform = app != null ? app.transform.Find("UIHUDCanvas/system alert text") : null;
+            cachedAlertHud = alertTransform != null ? alertTransform.GetComponent<GHPC.UI.Hud.AlertHud>() : null;
+            return cachedAlertHud;
         }
 
         private MarderSpikeMissileCameraFollow GetMissileFollow(LiveRound missile = null)
@@ -1289,7 +1959,93 @@ namespace UnderdogsEnhanced
         {
             MarderSpikeMissileCameraFollow follow = GetMissileFollow(missile);
             SetMissileSlot(follow != null ? follow.MissileSlot : null);
+            if (follow != null)
+                follow.SetManualModeActive(missile != null && !HasLockTarget());
             EnsureMclosGuide();
+        }
+
+        private bool IsMissileCameraActive()
+        {
+            MarderSpikeMissileCameraFollow follow = GetMissileFollow(activeMissile);
+            return follow != null && follow.CameraActive;
+        }
+
+        private bool CanAutoAttachSelectedMissileView()
+        {
+            return activeMissile != null && !activeMissile.IsDestroyed && CanUseInteriorSpikeView();
+        }
+
+        private bool ShouldUseManualMissileControl()
+        {
+            // Manual interception is intentionally narrow: MCLOS only, with the player
+            // actually riding the selected SPIKE missile view. This prevents stale input
+            // from leaking into FnF, commander, or exterior viewing.
+            return activeMissile != null
+                && !activeMissile.IsDestroyed
+                && IsMissileCameraActive()
+                && CanAutoAttachSelectedMissileView()
+                && !HasLockTarget();
+        }
+
+        private bool CanUseInteriorSpikeView()
+        {
+            if (!IsPlayerControllingThisRig() || !IsSpikeWeaponSelected())
+            {
+                LogViewGateState(null, false, "player_or_weapon_gate");
+                return false;
+            }
+
+            CameraManager cameraManager = CameraManager.Instance;
+            if (cameraManager != null && cameraManager.ExteriorMode)
+            {
+                LogViewGateState(CameraSlot.ActiveInstance, false, "exterior_mode");
+                return false;
+            }
+
+            CameraSlot activeSlot = CameraSlot.ActiveInstance;
+            if (activeSlot == missileSlot)
+            {
+                LogViewGateState(activeSlot, true, "missile_slot");
+                return true;
+            }
+
+            bool allowed = activeSlot != null
+                && SlotBelongsToVehicle(activeSlot)
+                && !activeSlot.IsExterior
+                && !IsCommanderLikeSlot(activeSlot);
+            LogViewGateState(activeSlot, allowed, allowed ? "interior_slot" : "blocked_slot");
+            return allowed;
+        }
+
+        private static float ApplyManualInputDeadzone(float axis)
+        {
+            return Mathf.Abs(axis) < ManualInputDeadzone ? 0f : axis;
+        }
+
+        private void SetManualAimAngularVelocity(Vector2 angularVelocity, string reason)
+        {
+            if (guidanceUnit == null)
+                return;
+
+            guidanceUnit.ManualAimAngularVelocity = angularVelocity;
+
+#if DEBUG
+            string normalizedReason = NormalizeManualAimLogReason(angularVelocity, reason);
+            string signature = string.Concat(
+                Mathf.RoundToInt(angularVelocity.x * 100f).ToString(),
+                "|",
+                Mathf.RoundToInt(angularVelocity.y * 100f).ToString(),
+                "|",
+                normalizedReason,
+                "|",
+                guidanceMode.ToString());
+
+            if (!string.Equals(lastLoggedManualAimSignature, signature, StringComparison.Ordinal))
+            {
+                lastLoggedManualAimSignature = signature;
+                UnderdogsDebug.LogSpike($"ManualAimAngularVelocity={angularVelocity} reason={normalizedReason} mode={guidanceMode}");
+            }
+#endif
         }
 
         private void EnsureMclosGuide()
@@ -1354,7 +2110,9 @@ namespace UnderdogsEnhanced
 
                     activeMissile = null;
                     preferTvControl = false;
+                    missileViewRequested = false;
                     closestMissileTargetDistance = float.PositiveInfinity;
+                    SetManualAimAngularVelocity(Vector2.zero, "missile_destroyed");
                     SetMissileSlot(null);
                     // 重置锁定状态
                     ClearLockTarget("missile_destroyed");
@@ -1365,18 +2123,18 @@ namespace UnderdogsEnhanced
             bool changed = currentMissile != activeMissile;
             activeMissile = currentMissile;
             if (changed)
+            {
                 closestMissileTargetDistance = float.PositiveInfinity;
+                missileViewRequested = true;
+            }
             SyncMissileFollow(activeMissile);
-
-            if (changed && !preferTvControl)
-                TryReturnToPreferredSlot();
         }
 
         private LiveRound ResolveCurrentMissile()
         {
             if (guidanceUnit != null && guidanceUnit.CurrentMissiles != null)
             {
-                for (int i = 0; i < guidanceUnit.CurrentMissiles.Count; i++)
+                for (int i = guidanceUnit.CurrentMissiles.Count - 1; i >= 0; i--)
                 {
                     LiveRound round = guidanceUnit.CurrentMissiles[i];
                     if (round != null && !round.IsDestroyed)
@@ -1387,7 +2145,7 @@ namespace UnderdogsEnhanced
             List<LiveRound> unguided = f_gu_unguidedMissiles != null ? f_gu_unguidedMissiles.GetValue(guidanceUnit) as List<LiveRound> : null;
             if (unguided != null)
             {
-                for (int i = 0; i < unguided.Count; i++)
+                for (int i = unguided.Count - 1; i >= 0; i--)
                 {
                     LiveRound round = unguided[i];
                     if (round != null && !round.IsDestroyed)
@@ -1412,6 +2170,7 @@ namespace UnderdogsEnhanced
         {
             nextSceneMissileSearchTime = Time.unscaledTime + SceneMissileSearchInterval;
             LiveRound[] rounds = Resources.FindObjectsOfTypeAll<LiveRound>();
+            LiveRound latest = null;
             for (int i = 0; i < rounds.Length; i++)
             {
                 LiveRound round = rounds[i];
@@ -1425,10 +2184,10 @@ namespace UnderdogsEnhanced
                 if (shooterVehicle != vehicle)
                     continue;
 
-                return round;
+                latest = round;
             }
 
-            return null;
+            return latest;
         }
 
         private void EnsureMissileSlot(LiveRound missile)
@@ -1477,9 +2236,15 @@ namespace UnderdogsEnhanced
 
         private void TryReturnToPreferredSlot()
         {
+            // 场景切换时 CameraManager 可能已销毁
+            if (CameraManager.Instance == null)
+                return;
+
             CameraSlot targetSlot = FindPreferredReturnSlot();
             if (targetSlot != null && CameraSlot.ActiveInstance != targetSlot)
-                CameraSlot.SetActiveSlot(targetSlot);
+            {
+                try { CameraSlot.SetActiveSlot(targetSlot); } catch { }
+            }
         }
 
         private CameraSlot FindPreferredReturnSlot()
@@ -1506,22 +2271,24 @@ namespace UnderdogsEnhanced
             if (!IsPlayerControllingThisRig() && activeMissile == null)
             {
                 guidanceMode = SpikeGuidanceMode.Idle;
-                return;
             }
-
-            if (activeMissile == null)
+            else if (activeMissile == null)
             {
                 guidanceMode = HasLockTarget() ? SpikeGuidanceMode.PreLaunchLock : SpikeGuidanceMode.Idle;
-                return;
             }
-
-            if (preferTvControl)
+            else
             {
-                guidanceMode = SpikeGuidanceMode.MCLOS;
-                return;
+                // Lock state is the primary guidance state: lock means FnF, no lock means MCLOS.
+                guidanceMode = HasLockTarget() ? SpikeGuidanceMode.FnF : SpikeGuidanceMode.MCLOS;
             }
 
-            guidanceMode = HasLockTarget() ? SpikeGuidanceMode.FnF : SpikeGuidanceMode.MCLOS;
+#if DEBUG
+            if (guidanceMode != lastLoggedGuidanceMode)
+            {
+                lastLoggedGuidanceMode = guidanceMode;
+                UnderdogsDebug.LogSpike($"Guidance mode => {guidanceMode} lockSource={GetLockSourceName()} activeOptic={GetActiveOpticName()}");
+            }
+#endif
         }
 
         private void UpdateLockTarget()
@@ -1530,195 +2297,13 @@ namespace UnderdogsEnhanced
 
             if (!canControlLock)
             {
-                if (lockRequestQueued)
-                {
-#if DEBUG
-                    UnderdogsDebug.LogSpike($"CanControlSpikeLock=false, dropping lock request");
-#endif
-                    lockRequestQueued = false;
-                }
-                if (activeMissile == null)
-                    ClearLockTarget("can_control_lock_false");
+                // Exterior/commander view should block new lock interaction, but it must not
+                // strip an already confirmed pre-launch or in-flight lock state.
+                ClearTrackingCandidate();
                 return;
             }
 
-            if (lockRequestQueued)
-            {
-                lockRequestQueued = false;
-#if DEBUG
-                UnderdogsDebug.LogSpike($"=== START LOCK REQUEST ===");
-#endif
-
-                try
-                {
-                    Vehicle targetVehicle = null;
-                    Transform targetAnchor = null;
-                    Renderer targetRenderer = null;
-                    float targetDistance = float.PositiveInfinity;
-
-                    Transform refTransform = null;
-                    Vector3 aimDirection = Vector3.forward;
-
-                    // 检查是否在导弹视角，使用导弹摄像机进行锁定检测
-                    CameraSlot activeSlot = CameraSlot.ActiveInstance;
-                    bool isMissileView = activeSlot == missileSlot && activeMissile != null;
-                    if (isMissileView)
-                    {
-                        // 导弹视角：使用导弹的位置和方向
-                        refTransform = activeMissile.transform;
-                        aimDirection = activeMissile.transform.forward;
-#if DEBUG
-                        UnderdogsDebug.LogSpike($"Locking from missile view");
-#endif
-                    }
-                    else
-                    {
-                        // 炮镜视角：使用FCS参考点
-                        refTransform = fcs?.ReferenceTransform;
-                        aimDirection = fcs != null ? fcs.AimWorldVector : Vector3.forward;
-#if DEBUG
-                        UnderdogsDebug.LogSpike($"Locking from optic view");
-#endif
-                    }
-
-                if (refTransform == null)
-                {
-                    Camera camera = CameraManager.MainCam;
-                    if (camera != null)
-                        refTransform = camera.transform;
-
-#if DEBUG
-                    UnderdogsDebug.LogSpike($"refTransform fallback to MainCam: {refTransform != null}");
-#endif
-                }
-
-                if (refTransform == null)
-                {
-#if DEBUG
-                    UnderdogsDebug.LogSpikeWarning($"refTransform is null, skipping raycast");
-#endif
-                }
-
-                if (refTransform != null)
-                {
-#if DEBUG
-                    UnderdogsDebug.LogSpike($"Performing raycast from origin={refTransform.position}");
-#endif
-                    Vector3 origin = refTransform.position;
-                    // 注意：fcs.AimWorldVector 和导弹transform.forward 已经是世界空间方向
-                    Vector3 direction = (activeSlot == missileSlot && activeMissile != null)
-                        ? activeMissile.transform.forward  // 导弹视角
-                        : (fcs != null ? fcs.AimWorldVector : refTransform.forward);  // 炮镜视角
-                    Ray ray = new Ray(origin, direction);
-                    RaycastHit hit;
-
-                    // LayerMask只检测载具层(14)和地形层(18)
-                    int vehicleLayer = 1 << 14;
-                    int terrainLayer = 1 << 18;
-                    int layerMask = vehicleLayer | terrainLayer;
-
-                    // 使用 SphereCast 增加锁定容错半径
-#if DEBUG
-                    if (Physics.SphereCast(ray, UnderdogsDebug.SpikeLockRadius, out hit, LockRange, layerMask))
-#else
-                    if (Physics.SphereCast(ray, 2.0f, out hit, LockRange, layerMask))
-#endif
-                    {
-                        targetVehicle = hit.collider != null ? hit.collider.GetComponentInParent<Vehicle>() : null;
-#if DEBUG
-                        UnderdogsDebug.LogSpike($"Raycast hit: collider exists={hit.collider != null}, vehicle exists={targetVehicle != null}, selfVehicle exists={vehicle != null}");
-#endif
-
-                        if (targetVehicle == vehicle)
-                        {
-#if DEBUG
-                            UnderdogsDebug.LogSpike($"Hit self vehicle, ignoring");
-#endif
-                            targetVehicle = null;
-                        }
-
-                        if (targetVehicle != null)
-                        {
-                            targetAnchor = ResolveTrackingAnchor(targetVehicle, hit.collider != null ? hit.collider.transform : null);
-                            targetRenderer = ResolveTrackingRenderer(targetVehicle, targetAnchor);
-                            targetDistance = hit.distance;
-#if DEBUG
-                            UnderdogsDebug.LogSpike($"Target resolved: anchor exists={targetAnchor != null}, renderer exists={targetRenderer != null}, dist={targetDistance:F1}");
-#endif
-                        }
-                    }
-#if DEBUG
-                    else
-                    {
-                        UnderdogsDebug.LogSpikeWarning($"Raycast missed, origin={origin}, direction={direction}");
-                    }
-#endif
-                }
-#if DEBUG
-                else
-                {
-                    UnderdogsDebug.LogSpike($"Skipping raycast (refTransform null)");
-                }
-#endif
-
-#if DEBUG
-                    UnderdogsDebug.LogSpike($"Raycast complete: targetVehicle exists={targetVehicle != null}");
-#endif
-
-                    if (targetVehicle != null)
-                    {
-#if DEBUG
-                        UnderdogsDebug.LogSpike($"Applying lock target...");
-#endif
-                        ApplyLockTarget(targetVehicle, targetAnchor, targetRenderer, targetDistance);
-                        if (TryGetLockAimPoint(out Vector3 aimPoint))
-                        {
-                            lastKnownAimPoint = aimPoint;
-                            hasLastKnownAimPoint = true;
-                        }
-
-                        lockConfirmed = true;
-
-                        if (activeMissile != null && preferTvControl)
-                        {
-                            preferTvControl = false;
-                            MarderSpikeMissileCameraFollow follow = GetMissileFollow(activeMissile);
-                            if (follow != null)
-                                follow.SetManualModeActive(false);
-#if DEBUG
-                            UnderdogsDebug.LogSpike($"Auto switch: MCLOS → FnF (lock acquired)");
-#endif
-                        }
-
-#if DEBUG
-                        UnderdogsDebug.LogSpike($"Lock SUCCESS: dist={lockedDistance:F1} mode={guidanceMode}");
-#endif
-                    }
-                    else if (HasLockTarget())
-                    {
-#if DEBUG
-                        UnderdogsDebug.LogSpike($"No target hit but had previous lock, clearing...");
-#endif
-                        ClearLockTarget("raycast_missed");
-#if DEBUG
-                        UnderdogsDebug.LogSpike("Lock cleared");
-#endif
-                    }
-
-#if DEBUG
-                    UnderdogsDebug.LogSpike($"=== END LOCK REQUEST ===");
-#endif
-                }
-                catch (System.Exception ex)
-                {
-#if DEBUG
-                    UnderdogsDebug.LogSpikeWarning($"Exception in lock request: {ex.Message}");
-                    UnderdogsDebug.LogSpikeWarning($"Stack: {ex.StackTrace}");
-#endif
-                }
-
-                return;
-            }
+            RefreshTrackingCandidate();
 
             if (HasLockTarget())
             {
@@ -1728,9 +2313,11 @@ namespace UnderdogsEnhanced
                     hasLastKnownAimPoint = true;
                     RefreshLockedDistance(preservedAimPoint);
                 }
-                else if (activeMissile == null)
+                else
                 {
                     ClearLockTarget("aim_point_lost");
+                    if (activeMissile != null)
+                        SetManualControlActive(true, false);
                     return;
                 }
 
@@ -1738,9 +2325,174 @@ namespace UnderdogsEnhanced
             }
         }
 
+        private void RefreshTrackingCandidate()
+        {
+            Transform refTransform;
+            Vector3 direction;
+            if (!TryGetTrackingRay(out refTransform, out direction))
+            {
+                ClearTrackingCandidate();
+                return;
+            }
+
+            Ray ray = new Ray(refTransform.position, direction);
+            int vehicleLayer = 1 << 14;
+            int terrainLayer = 1 << 18;
+            int layerMask = vehicleLayer | terrainLayer;
+
+            RaycastHit hit;
+            if (!TryAcquireTrackingHit(ray, layerMask, out hit))
+            {
+                ClearTrackingCandidate();
+                return;
+            }
+
+            Vehicle targetVehicle = hit.collider != null ? hit.collider.GetComponentInParent<Vehicle>() : null;
+            if (targetVehicle == null || targetVehicle == vehicle)
+            {
+                ClearTrackingCandidate();
+                return;
+            }
+
+            candidateVehicle = targetVehicle;
+            candidateAnchor = ResolveTrackingAnchor(targetVehicle, hit.collider != null ? hit.collider.transform : null);
+            candidateRenderer = ResolveTrackingRenderer(targetVehicle, candidateAnchor);
+            candidateCollider = ResolveAnchorCollider(candidateAnchor);
+            candidateDistance = hit.distance;
+            candidateColliders = targetVehicle.GetComponentsInChildren<Collider>(true);
+            candidateRenderers = targetVehicle.GetComponentsInChildren<Renderer>(true);
+        }
+
+        private bool TryAcquireTrackingHit(Ray ray, int layerMask, out RaycastHit selectedHit)
+        {
+            if (Physics.Raycast(ray, out RaycastHit directHit, LockRange, layerMask))
+            {
+                Vehicle directVehicle = directHit.collider != null ? directHit.collider.GetComponentInParent<Vehicle>() : null;
+                if (directVehicle != null && directVehicle != vehicle)
+                {
+                    selectedHit = directHit;
+                    return true;
+                }
+            }
+
+            float baseRadius = GetBaseLockRadius();
+            if (TryAcquireTrackingHit(ray, baseRadius, layerMask, out selectedHit))
+                return true;
+
+            float expandedRadius = GetExpandedLockRadius(baseRadius);
+            if (expandedRadius > baseRadius + 0.01f && TryAcquireTrackingHit(ray, expandedRadius, layerMask, out selectedHit))
+                return true;
+
+            selectedHit = default(RaycastHit);
+            return false;
+        }
+
+        private bool TryAcquireTrackingHit(Ray ray, float radius, int layerMask, out RaycastHit selectedHit)
+        {
+            selectedHit = default(RaycastHit);
+            RaycastHit[] hits = Physics.SphereCastAll(ray, radius, LockRange, layerMask);
+            if (hits == null || hits.Length == 0)
+                return false;
+
+            float nearestTerrainDistance = float.PositiveInfinity;
+            float nearestVehicleDistance = float.PositiveInfinity;
+            int nearestVehicleIndex = -1;
+
+            for (int i = 0; i < hits.Length; i++)
+            {
+                RaycastHit hit = hits[i];
+                if (hit.collider == null)
+                    continue;
+
+                Vehicle hitVehicle = hit.collider.GetComponentInParent<Vehicle>();
+                if (hitVehicle != null)
+                {
+                    if (hitVehicle == vehicle || hit.distance >= nearestVehicleDistance)
+                        continue;
+
+                    nearestVehicleDistance = hit.distance;
+                    nearestVehicleIndex = i;
+                    continue;
+                }
+
+                if (hit.distance < nearestTerrainDistance)
+                    nearestTerrainDistance = hit.distance;
+            }
+
+            if (nearestVehicleIndex < 0)
+                return false;
+
+            if (!float.IsInfinity(nearestTerrainDistance) && nearestTerrainDistance + 0.5f < nearestVehicleDistance)
+                return false;
+
+            selectedHit = hits[nearestVehicleIndex];
+            return true;
+        }
+
+        private bool TryGetTrackingRay(out Transform refTransform, out Vector3 direction)
+        {
+            refTransform = null;
+            direction = Vector3.zero;
+
+            if (IsMissileCameraActive() && activeMissile != null)
+            {
+                Camera missileCamera = CameraManager.MainCam;
+                if (missileCamera != null)
+                {
+                    refTransform = missileCamera.transform;
+                    direction = missileCamera.transform.forward;
+                }
+                else
+                {
+                    refTransform = activeMissile.transform;
+                    direction = activeMissile.transform.forward;
+                }
+                return true;
+            }
+
+            CameraSlot activeSlot = CameraSlot.ActiveInstance;
+            if ((activeSlot == daySlot || activeSlot == thermalSlot) && fcs != null && fcs.ReferenceTransform != null)
+            {
+                refTransform = fcs.ReferenceTransform;
+                direction = fcs.AimWorldVector;
+            }
+            else
+            {
+                Camera camera = CameraManager.MainCam;
+                if (camera != null)
+                {
+                    refTransform = camera.transform;
+                    direction = camera.transform.forward;
+                }
+                else if (fcs != null && fcs.ReferenceTransform != null)
+                {
+                    refTransform = fcs.ReferenceTransform;
+                    direction = fcs.AimWorldVector;
+                }
+            }
+
+            return refTransform != null && direction.sqrMagnitude > 0.001f;
+        }
+
+        private bool HasTrackingCandidate()
+        {
+            return candidateVehicle != null || candidateRenderer != null || candidateAnchor != null;
+        }
+
+        private void ClearTrackingCandidate()
+        {
+            candidateVehicle = null;
+            candidateAnchor = null;
+            candidateRenderer = null;
+            candidateCollider = null;
+            candidateColliders = null;
+            candidateRenderers = null;
+            candidateDistance = float.PositiveInfinity;
+        }
+
         private void UpdateTargetPassFallback()
         {
-            if (activeMissile == null || preferTvControl)
+            if (activeMissile == null || !HasLockTarget())
             {
                 closestMissileTargetDistance = float.PositiveInfinity;
                 return;
@@ -1769,6 +2521,7 @@ namespace UnderdogsEnhanced
                 return;
 
             closestMissileTargetDistance = currentDistance;
+            ClearLockTarget("passed_target");
             SetManualControlActive(true, true);
 
 #if DEBUG
@@ -1781,7 +2534,7 @@ namespace UnderdogsEnhanced
             lockedVehicle = targetVehicle;
             lockedAnchor = targetAnchor;
             lockedRenderer = targetRenderer;
-            lockedCollider = targetAnchor != null ? targetAnchor.GetComponent<Collider>() : null;
+            lockedCollider = ResolveAnchorCollider(targetAnchor);
             lockedDistance = targetDistance;
             lockedColliders = targetVehicle != null ? targetVehicle.GetComponentsInChildren<Collider>(true) : null;
             lockedRenderers = targetVehicle != null ? targetVehicle.GetComponentsInChildren<Renderer>(true) : null;
@@ -1839,8 +2592,10 @@ namespace UnderdogsEnhanced
         private Transform ResolveTrackingAnchor(Vehicle targetVehicle, Transform fallback)
         {
             if (targetVehicle == null)
-                return fallback;
+                return null;
 
+            // Deliberately keep this exact. We only want the authored TRACKING OBJECT,
+            // otherwise we fall through to the fallback anchor / aggregated bounds chain.
             Transform trackingObject = targetVehicle.transform.Find("TRACKING OBJECT");
             if (trackingObject == null)
             {
@@ -1848,7 +2603,7 @@ namespace UnderdogsEnhanced
                 for (int i = 0; i < transforms.Length; i++)
                 {
                     Transform candidate = transforms[i];
-                    if (candidate != null && candidate.name.IndexOf("TRACKING", StringComparison.OrdinalIgnoreCase) >= 0)
+                    if (candidate != null && string.Equals(candidate.name, "TRACKING OBJECT", StringComparison.OrdinalIgnoreCase))
                     {
                         trackingObject = candidate;
                         break;
@@ -1859,7 +2614,7 @@ namespace UnderdogsEnhanced
             if (trackingObject == null)
                 MarderSpikeTrackingDimensions.TryEnsureFallbackAnchor(targetVehicle, out trackingObject);
 
-            return trackingObject != null ? trackingObject : fallback;
+            return trackingObject;
         }
 
         private Renderer ResolveTrackingRenderer(Vehicle targetVehicle, Transform preferredAnchor)
@@ -1871,27 +2626,7 @@ namespace UnderdogsEnhanced
                     return preferredRenderer;
             }
 
-            if (targetVehicle == null)
-                return null;
-
-            Renderer[] renderers = targetVehicle.GetComponentsInChildren<Renderer>(true);
-            Renderer largestRenderer = null;
-            float largestSize = 0f;
-            for (int i = 0; i < renderers.Length; i++)
-            {
-                Renderer renderer = renderers[i];
-                if (renderer == null)
-                    continue;
-
-                float rendererSize = renderer.bounds.size.sqrMagnitude;
-                if (largestRenderer == null || rendererSize > largestSize)
-                {
-                    largestRenderer = renderer;
-                    largestSize = rendererSize;
-                }
-            }
-
-            return largestRenderer;
+            return null;
         }
 
         private void UpdateAimProxy()
@@ -1899,8 +2634,16 @@ namespace UnderdogsEnhanced
             if (aimProxy == null)
                 return;
 
-            Camera activeCamera = CameraManager.MainCam;
+            Camera activeCamera = ResolveDisplayCamera();
             Vector3 aimPoint;
+
+            if (guidanceMode == SpikeGuidanceMode.MCLOS && activeMissile != null && !ShouldUseManualMissileControl())
+            {
+                aimPoint = activeMissile.transform.position + activeMissile.transform.forward * ProxyRange;
+                aimProxy.position = aimPoint;
+                aimProxy.rotation = Quaternion.LookRotation(activeMissile.transform.forward, Vector3.up);
+                return;
+            }
 
             if (guidanceMode == SpikeGuidanceMode.FnF && TryGetLockAimPoint(out aimPoint))
             {
@@ -1949,6 +2692,9 @@ namespace UnderdogsEnhanced
             if (guidanceUnit == null)
                 return;
 
+            if (guidanceMode != SpikeGuidanceMode.MCLOS || !ShouldUseManualMissileControl())
+                SetManualAimAngularVelocity(Vector2.zero, guidanceMode == SpikeGuidanceMode.MCLOS ? "mclos_view_inactive" : "non_mclos");
+
             if (guidanceMode == SpikeGuidanceMode.MCLOS && activeMissile != null)
             {
                 EnsureMclosGuide();
@@ -1968,20 +2714,71 @@ namespace UnderdogsEnhanced
 
             if (guidanceMode == SpikeGuidanceMode.FnF && activeMissile != null)
             {
-                SpikeInfraredTracker tracker = activeMissile.GetComponent<SpikeInfraredTracker>();
-                if (tracker == null)
+                if (!TryGetLockAimPoint(out Vector3 targetAimPoint))
                 {
-                    tracker = activeMissile.gameObject.AddComponent<SpikeInfraredTracker>();
-                    if (HasLockTarget())
-                        tracker.SetInitialLock(lockedVehicle, lockedAnchor);
-                }
-
-                if (tracker.MissedTarget && !preferTvControl)
-                {
+                    ClearLockTarget("fnf_target_center_lost");
                     SetManualControlActive(true, true);
 #if DEBUG
-                    UnderdogsDebug.LogSpike("Auto switch: FnF → MCLOS (missed target)");
+                    UnderdogsDebug.LogSpikeWarning("FnF target center lost, falling back to MCLOS");
 #endif
+                    return;
+                }
+
+                // Choose tracker based on top-attack mode captured at launch
+                if (topAttackModeForCurrentMissile)
+                {
+                    // Use top-attack tracker
+                    SpikeTopAttackTracker topTracker = activeMissile.GetComponent<SpikeTopAttackTracker>();
+                    if (topTracker == null)
+                    {
+                        // Remove regular tracker if exists
+                        SpikeInfraredTracker regularTracker = activeMissile.GetComponent<SpikeInfraredTracker>();
+                        if (regularTracker != null)
+                            Destroy(regularTracker);
+
+                        topTracker = activeMissile.gameObject.AddComponent<SpikeTopAttackTracker>();
+                    }
+
+                    topTracker.UpdateLockSolution(
+                        lockedVehicle,
+                        lockedAnchor != null ? lockedAnchor : lockedRenderer != null ? lockedRenderer.transform : null,
+                        lockedRenderer,
+                        targetAimPoint);
+
+                    if (topTracker.MissedTarget)
+                    {
+                        ClearLockTarget("top_tracker_missed_target");
+                        SetManualControlActive(true, true);
+#if DEBUG
+                        UnderdogsDebug.LogSpike("Auto switch: FnF → MCLOS (missed target - top attack)");
+#endif
+                        return;
+                    }
+                }
+                else
+                {
+                    // Use regular infrared tracker
+                    SpikeInfraredTracker tracker = activeMissile.GetComponent<SpikeInfraredTracker>();
+                    if (tracker == null)
+                    {
+                        tracker = activeMissile.gameObject.AddComponent<SpikeInfraredTracker>();
+                    }
+
+                    tracker.UpdateLockSolution(
+                        lockedVehicle,
+                        lockedAnchor != null ? lockedAnchor : lockedRenderer != null ? lockedRenderer.transform : null,
+                        lockedRenderer,
+                        targetAimPoint);
+
+                    if (tracker.MissedTarget)
+                    {
+                        ClearLockTarget("tracker_missed_target");
+                        SetManualControlActive(true, true);
+#if DEBUG
+                        UnderdogsDebug.LogSpike("Auto switch: FnF → MCLOS (missed target)");
+#endif
+                        return;
+                    }
                 }
 
                 activeMissile.SkipGuidanceLockout = true;
@@ -1994,7 +2791,20 @@ namespace UnderdogsEnhanced
 
         private bool TryGetLockAimPoint(out Vector3 aimPoint)
         {
-            if (TryGetTargetBounds(out Bounds bounds))
+            Bounds bounds;
+            if (TryGetTargetBounds(out bounds))
+            {
+                aimPoint = bounds.center;
+                return true;
+            }
+
+            if (TryGetBoundsFromAnchor(lockedAnchor, out bounds))
+            {
+                aimPoint = bounds.center;
+                return true;
+            }
+
+            if (TryGetBoundsFromRenderer(lockedRenderer, out bounds))
             {
                 aimPoint = bounds.center;
                 return true;
@@ -2056,29 +2866,24 @@ namespace UnderdogsEnhanced
                 return true;
             }
 
-            if (lockedRenderer != null)
-            {
-                bounds = lockedRenderer.bounds;
-                CacheTargetBounds(bounds);
-                return true;
-            }
-
-            if (lockedCollider != null && lockedCollider.enabled && !lockedCollider.isTrigger)
-            {
-                bounds = lockedCollider.bounds;
-                CacheTargetBounds(bounds);
-                return true;
-            }
-
-            if (MarderSpikeTrackingDimensions.TryGetFallbackBounds(lockedAnchor, out bounds))
-            {
-                CacheTargetBounds(bounds);
-                return true;
-            }
-
             if (TryBuildBoundsFromColliders(out bounds) || TryBuildBoundsFromRenderers(out bounds))
             {
                 CacheTargetBounds(bounds);
+                LogBoundsSource(true, lockedColliders != null && lockedColliders.Length > 0 ? "vehicle_colliders" : "vehicle_renderers");
+                return true;
+            }
+
+            if (TryGetBoundsFromAnchor(lockedAnchor, out bounds))
+            {
+                CacheTargetBounds(bounds);
+                LogBoundsSource(true, MarderSpikeTrackingDimensions.IsFallbackAnchor(lockedAnchor) ? "fallback_anchor" : "tracking_anchor");
+                return true;
+            }
+
+            if (TryGetBoundsFromRenderer(lockedRenderer, out bounds))
+            {
+                CacheTargetBounds(bounds);
+                LogBoundsSource(true, "tracking_renderer");
                 return true;
             }
 
@@ -2092,6 +2897,32 @@ namespace UnderdogsEnhanced
             bounds = default(Bounds);
             hasCachedTargetBounds = true;
             nextTargetBoundsRefreshTime = Time.unscaledTime + 1f; // 0.5秒后重试
+            LogBoundsSource(true, "none");
+            return false;
+        }
+
+        private bool TryGetCandidateBounds(out Bounds bounds)
+        {
+            if (TryBuildBoundsFromColliders(candidateColliders, out bounds) || TryBuildBoundsFromRenderers(candidateRenderers, out bounds))
+            {
+                LogBoundsSource(false, candidateColliders != null && candidateColliders.Length > 0 ? "vehicle_colliders" : "vehicle_renderers");
+                return true;
+            }
+
+            if (TryGetBoundsFromAnchor(candidateAnchor, out bounds))
+            {
+                LogBoundsSource(false, MarderSpikeTrackingDimensions.IsFallbackAnchor(candidateAnchor) ? "fallback_anchor" : "tracking_anchor");
+                return true;
+            }
+
+            if (TryGetBoundsFromRenderer(candidateRenderer, out bounds))
+            {
+                LogBoundsSource(false, "tracking_renderer");
+                return true;
+            }
+
+            bounds = default(Bounds);
+            LogBoundsSource(false, "none");
             return false;
         }
 
@@ -2106,13 +2937,18 @@ namespace UnderdogsEnhanced
 
         private bool TryBuildBoundsFromColliders(out Bounds bounds)
         {
-            if (lockedColliders != null && lockedColliders.Length > 0)
+            return TryBuildBoundsFromColliders(lockedColliders, out bounds);
+        }
+
+        private bool TryBuildBoundsFromColliders(Collider[] colliders, out Bounds bounds)
+        {
+            if (colliders != null && colliders.Length > 0)
             {
                 bool initialized = false;
                 bounds = new Bounds();
-                for (int i = 0; i < lockedColliders.Length; i++)
+                for (int i = 0; i < colliders.Length; i++)
                 {
-                    Collider collider = lockedColliders[i];
+                    Collider collider = colliders[i];
                     if (collider == null || collider.isTrigger)
                         continue;
 
@@ -2137,13 +2973,18 @@ namespace UnderdogsEnhanced
 
         private bool TryBuildBoundsFromRenderers(out Bounds bounds)
         {
-            if (lockedRenderers != null && lockedRenderers.Length > 0)
+            return TryBuildBoundsFromRenderers(lockedRenderers, out bounds);
+        }
+
+        private bool TryBuildBoundsFromRenderers(Renderer[] renderers, out Bounds bounds)
+        {
+            if (renderers != null && renderers.Length > 0)
             {
                 bool initialized = false;
                 bounds = new Bounds();
-                for (int i = 0; i < lockedRenderers.Length; i++)
+                for (int i = 0; i < renderers.Length; i++)
                 {
-                    Renderer renderer = lockedRenderers[i];
+                    Renderer renderer = renderers[i];
                     if (renderer == null)
                         continue;
 
@@ -2166,12 +3007,128 @@ namespace UnderdogsEnhanced
             return false;
         }
 
+        private Collider ResolveAnchorCollider(Transform anchor)
+        {
+            if (anchor == null)
+                return null;
+
+            Collider collider = anchor.GetComponent<Collider>() ?? anchor.GetComponentInChildren<Collider>(true);
+            if (collider != null && collider.enabled && !collider.isTrigger)
+                return collider;
+
+            return null;
+        }
+
+        private bool TryGetBoundsFromRenderer(Renderer renderer, out Bounds bounds)
+        {
+            if (renderer != null)
+            {
+                bounds = renderer.bounds;
+                return true;
+            }
+
+            bounds = default(Bounds);
+            return false;
+        }
+
+        private bool TryGetBoundsFromAnchor(Transform anchor, out Bounds bounds)
+        {
+            if (anchor == null)
+            {
+                bounds = default(Bounds);
+                return false;
+            }
+
+            if (MarderSpikeTrackingDimensions.TryGetFallbackBounds(anchor, out bounds))
+                return true;
+
+            Renderer anchorRenderer = anchor.GetComponent<Renderer>() ?? anchor.GetComponentInChildren<Renderer>(true);
+            if (anchorRenderer != null)
+            {
+                bounds = anchorRenderer.bounds;
+                return true;
+            }
+
+            Collider anchorCollider = ResolveAnchorCollider(anchor);
+            if (anchorCollider != null)
+            {
+                bounds = anchorCollider.bounds;
+                return true;
+            }
+
+            bounds = default(Bounds);
+            return false;
+        }
+
+        private Camera ResolveDisplayCamera()
+        {
+            return CameraManager.MainCam;
+        }
+
+        private bool TryProjectWorldPointToScreen(Vector3 worldPoint, Camera camera, out Vector3 screenPoint)
+        {
+            screenPoint = Vector3.zero;
+            if (camera == null)
+                return false;
+
+            screenPoint = camera.WorldToScreenPoint(worldPoint);
+            return screenPoint.z > 0f;
+        }
+
+        private string GetLockSourceName()
+        {
+            if (lockedRenderer != null)
+                return "tracking_renderer";
+            if (lockedAnchor != null)
+                return MarderSpikeTrackingDimensions.IsFallbackAnchor(lockedAnchor) ? "fallback_anchor" : "tracking_anchor";
+            if (lockedVehicle != null)
+                return "vehicle";
+            if (hasLastKnownAimPoint)
+                return "last_known";
+            return "none";
+        }
+
+        private UsableOptic GetActiveOptic()
+        {
+            if (IsMissileCameraActive())
+                return thermalOptic != null ? thermalOptic : missileOptic != null ? missileOptic : dayOptic;
+
+            CameraSlot activeSlot = CameraSlot.ActiveInstance;
+            if (activeSlot == thermalSlot)
+                return thermalOptic;
+            if (activeSlot == daySlot)
+                return dayOptic;
+
+            return activeSlot != null ? activeSlot.GetComponentInParent<UsableOptic>() : null;
+        }
+
+        private string GetActiveOpticName()
+        {
+            UsableOptic optic = GetActiveOptic();
+            return optic != null ? optic.name : "none";
+        }
+
+        private void LogBoundsSource(bool lockedTarget, string source)
+        {
+#if DEBUG
+            string lastSource = lockedTarget ? lastLoggedTargetBoundsSource : lastLoggedCandidateBoundsSource;
+            if (string.Equals(lastSource, source, StringComparison.Ordinal))
+                return;
+
+            if (lockedTarget)
+                lastLoggedTargetBoundsSource = source;
+            else
+                lastLoggedCandidateBoundsSource = source;
+            UnderdogsDebug.LogSpike($"{(lockedTarget ? "Lock" : "Candidate")} bounds source => {source}");
+#endif
+        }
+
         private void EnsureOverlay()
         {
             if (overlayObject != null)
                 return;
 
-            overlayObject = new GameObject("MissileReticleCanvas");
+            overlayObject = new GameObject(OverlayName);
             overlayObject.transform.SetParent(transform, false);
 
             Canvas canvas = overlayObject.AddComponent<Canvas>();
@@ -2187,6 +3144,9 @@ namespace UnderdogsEnhanced
             overlayRoot = CreateRect("Root", overlayObject.transform, Vector2.zero, new Vector2(1920f, 1080f));
             overlayReticleRoot = CreateRect("Reticle", overlayRoot, Vector2.zero, new Vector2(400f, 400f));
             CreateCenterCross(overlayReticleRoot);
+            topAttackCueRect = CreateRect("TOP ATTACK CUE", overlayRoot, Vector2.zero, new Vector2(100f, 100f));
+            CreateDiagonalCross(topAttackCueRect, 84f, 5f);
+            topAttackCueRect.gameObject.SetActive(false);
             overlayTrackingRoot = CreateRect("TRACKING GATE HOLDER", overlayRoot, Vector2.zero, new Vector2(1920f, 1080f));
             lockBoxRect = CreateRect("GATE", overlayTrackingRoot, Vector2.zero, new Vector2(200f, 140f));
             CreateCornerBox(lockBoxRect, 34f, 5f);
@@ -2218,8 +3178,14 @@ namespace UnderdogsEnhanced
             if (!active)
                 return;
 
+            bool showCenterReticle = IsMissileCameraActive() || CameraSlot.ActiveInstance == thermalSlot;
+            if (overlayReticleRoot != null && overlayReticleRoot.gameObject.activeSelf != showCenterReticle)
+                overlayReticleRoot.gameObject.SetActive(showCenterReticle);
+
+            UpdateTopAttackCue();
+
             Rect targetRect;
-            bool hasTargetRect = TryGetTargetScreenRect(out targetRect);
+            bool hasTargetRect = TryGetDisplayTargetScreenRect(out targetRect);
             bool hasLock = HasLockTarget();
 
             if (!hasLock && !hasTargetRect)
@@ -2238,14 +3204,16 @@ namespace UnderdogsEnhanced
                 size.y = Mathf.Max(size.y, targetRect.height);
                 anchoredPosition = ScreenToCanvas(targetRect.center, overlayRoot.sizeDelta);
             }
+            else if (hasLock && TryGetLockScreenPoint(out Vector2 lockScreenPoint))
+            {
+                anchoredPosition = ScreenToCanvas(ClampScreenPoint(lockScreenPoint), overlayRoot.sizeDelta);
+            }
             else if (hasLock)
             {
-                // 有锁定但目标不在视野内：显示在准星位置（中心）
                 anchoredPosition = Vector2.zero;
             }
             else
             {
-                // 无锁定也无目标矩形：隐藏
                 lockBoxRect.gameObject.SetActive(false);
                 return;
             }
@@ -2254,6 +3222,36 @@ namespace UnderdogsEnhanced
             lockBoxRect.anchoredPosition = anchoredPosition;
             if (!lockBoxRect.gameObject.activeSelf)
                 lockBoxRect.gameObject.SetActive(true);
+        }
+
+        private void UpdateTopAttackCue()
+        {
+            if (topAttackCueRect == null || overlayRoot == null)
+                return;
+
+            if (!TryGetTopAttackCueScreenPoint(out Vector2 screenPoint))
+            {
+                if (topAttackCueRect.gameObject.activeSelf)
+                    topAttackCueRect.gameObject.SetActive(false);
+                return;
+            }
+
+            topAttackCueRect.anchoredPosition = ScreenToCanvas(ClampScreenPoint(screenPoint), overlayRoot.sizeDelta);
+            topAttackCueRect.localScale = Vector3.one;
+            if (!topAttackCueRect.gameObject.activeSelf)
+                topAttackCueRect.gameObject.SetActive(true);
+        }
+
+        private bool TryGetDisplayTargetScreenRect(out Rect rect)
+        {
+            if (HasLockTarget())
+                return TryGetTargetScreenRect(out rect);
+
+            if (HasTrackingCandidate())
+                return TryGetCandidateScreenRect(out rect);
+
+            rect = new Rect();
+            return false;
         }
 
         private bool TryGetTargetScreenRect(out Rect rect)
@@ -2265,13 +3263,116 @@ namespace UnderdogsEnhanced
             }
 
             rect = new Rect();
-            // 使用主相机进行屏幕坐标转换（Canvas是ScreenSpaceOverlay）
-            Camera camera = CameraManager.MainCam;
-            if (camera == null)
-                return false;
-
             Bounds bounds;
             if (!TryGetTargetBounds(out bounds))
+                return false;
+
+            return TryProjectBoundsToScreen(bounds, out rect, cacheResult: true);
+        }
+
+        private bool TryGetCandidateScreenRect(out Rect rect)
+        {
+            rect = new Rect();
+            Bounds bounds;
+            if (!TryGetCandidateBounds(out bounds))
+                return false;
+
+            return TryProjectBoundsToScreen(bounds, out rect, cacheResult: false);
+        }
+
+        private bool TryGetLockScreenPoint(out Vector2 screenPoint)
+        {
+            screenPoint = Vector2.zero;
+            Camera camera = ResolveDisplayCamera();
+            if (camera == null || !TryGetLockAimPoint(out Vector3 aimPoint))
+                return false;
+
+            if (!TryProjectWorldPointToScreen(aimPoint, camera, out Vector3 projectedPoint))
+                return false;
+
+            screenPoint = new Vector2(projectedPoint.x, projectedPoint.y);
+            return true;
+        }
+
+        private bool TryGetTopAttackCueScreenPoint(out Vector2 screenPoint)
+        {
+            screenPoint = Vector2.zero;
+            Camera camera = ResolveDisplayCamera();
+            if (camera == null || !TryGetTopAttackCueWorldPoint(out Vector3 cueWorldPoint, out bool diveCommitted))
+                return false;
+
+            if (!TryProjectWorldPointToScreen(cueWorldPoint, camera, out Vector3 projectedPoint))
+            {
+                if (TryGetLockScreenPoint(out Vector2 lockScreenPoint))
+                {
+                    screenPoint = lockScreenPoint;
+                }
+                else if (diveCommitted)
+                {
+                    screenPoint = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                screenPoint = new Vector2(projectedPoint.x, projectedPoint.y);
+            }
+
+            return true;
+        }
+
+        private bool TryGetTopAttackCueWorldPoint(out Vector3 worldPoint, out bool diveCommitted)
+        {
+            worldPoint = Vector3.zero;
+            diveCommitted = false;
+
+            if (activeMissile == null || activeMissile.IsDestroyed || !topAttackModeForCurrentMissile)
+                return false;
+
+            SpikeTopAttackTracker tracker = activeMissile.GetComponent<SpikeTopAttackTracker>();
+            if (tracker != null)
+            {
+                if (!tracker.ProfileActive)
+                    return false;
+
+                diveCommitted = tracker.DiveCommitted;
+                if (tracker.TryGetCurrentAimPoint(out worldPoint))
+                    return true;
+            }
+
+            if (!TryGetLockAimPoint(out Vector3 targetCenter))
+                return false;
+
+            Transform sourceTransform = activeMissile != null && !activeMissile.IsDestroyed
+                ? activeMissile.transform
+                : fcs != null && fcs.ReferenceTransform != null ? fcs.ReferenceTransform : transform;
+            Vector3 sourcePosition = sourceTransform != null ? sourceTransform.position : transform.position;
+            float sourceDistance = Vector3.Distance(sourcePosition, targetCenter);
+            float attackHeight = SpikeTopAttackTracker.CalculateAttackHeight(sourceDistance);
+
+            if (activeMissile == null || activeMissile.IsDestroyed)
+            {
+                worldPoint = SpikeTopAttackTracker.BuildClimbAimPoint(targetCenter, attackHeight);
+                return true;
+            }
+
+            worldPoint = SpikeTopAttackTracker.GetGuidanceAimPoint(
+                sourcePosition,
+                targetCenter,
+                attackHeight,
+                sourceDistance);
+            return true;
+        }
+
+        private bool TryProjectBoundsToScreen(Bounds bounds, out Rect rect, bool cacheResult)
+        {
+            rect = new Rect();
+
+            Camera camera = ResolveDisplayCamera();
+            if (camera == null)
                 return false;
 
             targetBoundsCorners[0] = new Vector3(bounds.min.x, bounds.min.y, bounds.min.z);
@@ -2291,8 +3392,7 @@ namespace UnderdogsEnhanced
 
             for (int i = 0; i < targetBoundsCorners.Length; i++)
             {
-                Vector3 screen = camera.WorldToScreenPoint(targetBoundsCorners[i]);
-                if (screen.z <= 0f)
+                if (!TryProjectWorldPointToScreen(targetBoundsCorners[i], camera, out Vector3 screen) || screen.z <= 0f)
                     continue;
 
                 anyPoint = true;
@@ -2306,17 +3406,49 @@ namespace UnderdogsEnhanced
                 return false;
 
             rect = Rect.MinMaxRect(minX, minY, maxX, maxY);
-            cachedTargetScreenRect = rect;
-            hasCachedTargetScreenRect = true;
-            nextTargetScreenRectRefreshTime = Time.unscaledTime + LockScreenRectRefreshInterval;
-            return rect.width > 1f && rect.height > 1f;
+            if (cacheResult)
+            {
+                cachedTargetScreenRect = rect;
+                hasCachedTargetScreenRect = true;
+                nextTargetScreenRectRefreshTime = Time.unscaledTime + LockScreenRectRefreshInterval;
+            }
+            return true;
         }
 
         private float GetDistanceScaledLockSize()
         {
-            float distance = float.IsInfinity(lockedDistance) ? 4000f : lockedDistance;
+            float distance = !float.IsInfinity(lockedDistance) ? lockedDistance : !float.IsInfinity(candidateDistance) ? candidateDistance : 4000f;
             float t = Mathf.InverseLerp(4000f, 150f, distance);
             return Mathf.Lerp(72f, 260f, t);
+        }
+
+        private float GetBaseLockRadius()
+        {
+#if DEBUG
+            return Mathf.Max(UnderdogsDebug.SpikeLockRadius, 0.1f);
+#else
+            return 2.0f;
+#endif
+        }
+
+        private float GetExpandedLockRadius(float baseRadius)
+        {
+            Camera camera = CameraManager.MainCam;
+            float fov = camera != null ? camera.fieldOfView : daySlot != null ? daySlot.CurrentFov : 10f;
+            float distanceHint = !float.IsInfinity(lockedDistance) ? lockedDistance : !float.IsInfinity(candidateDistance) ? candidateDistance : 2500f;
+            float distanceScale = Mathf.Lerp(1f, 3.5f, Mathf.InverseLerp(500f, 4500f, distanceHint));
+            float fovScale = Mathf.Clamp(fov / 10f, 0.75f, 1.6f);
+            return Mathf.Clamp(baseRadius * distanceScale * fovScale, baseRadius, 12f);
+        }
+
+        private static Vector2 ClampScreenPoint(Vector2 screenPoint)
+        {
+            const float edgeMargin = 28f;
+            float maxX = Mathf.Max(edgeMargin, Screen.width - edgeMargin);
+            float maxY = Mathf.Max(edgeMargin, Screen.height - edgeMargin);
+            return new Vector2(
+                Mathf.Clamp(screenPoint.x, edgeMargin, maxX),
+                Mathf.Clamp(screenPoint.y, edgeMargin, maxY));
         }
 
         private Vector2 ScreenToCanvas(Vector2 screenPoint, Vector2 canvasSize)
@@ -2328,46 +3460,16 @@ namespace UnderdogsEnhanced
 
         private bool HasLockTarget()
         {
-            bool result = lockConfirmed && (lockedVehicle != null || lockedRenderer != null || lockedAnchor != null || hasLastKnownAimPoint);
+            bool result = lockConfirmed && (lockedVehicle != null || lockedRenderer != null || lockedAnchor != null);
             return result;
         }
 
         private bool CanControlSpikeLock()
         {
-            bool newResult;
-
-            if (!IsPlayerControllingThisRig())
-            {
-                newResult = false;
-            }
-            else
-            {
-                CameraManager cameraManager = CameraManager.Instance;
-                CameraSlot active = CameraSlot.ActiveInstance;
-
-                // 允许导弹视角下的锁定（即使ExteriorMode为true）
-                if (cameraManager != null && cameraManager.ExteriorMode && active != missileSlot)
-                {
-                    newResult = false;
-                }
-                else if (active == missileSlot)
-                {
-                    newResult = activeMissile != null;
-                }
-                else
-                {
-                    bool weaponSelected = IsSpikeWeaponSelected();
-                    bool validSlot = active == thermalSlot || active == daySlot;
-                    newResult = weaponSelected && validSlot;
-                }
-            }
-
-            // 只在变化时输出日志，或有锁定请求时
-            if (lockRequestQueued)
-            {
-                UnderdogsDebug.LogSpike($"CanControlSpikeLock={newResult}: playerControl={IsPlayerControllingThisRig()}, weaponSelected={IsSpikeWeaponSelected()}");
-            }
-            else if (newResult != lastCanControlSpikeLock )
+            bool newResult = IsMissileCameraActive()
+                ? IsPlayerControllingThisRig() && IsSpikeWeaponSelected() && activeMissile != null
+                : CanUseInteriorSpikeView();
+            if (newResult != lastCanControlSpikeLock)
             {
                 lastCanControlSpikeLock = newResult;
                 UnderdogsDebug.LogSpike($"CanControlSpikeLock changed to {newResult}");
@@ -2378,20 +3480,29 @@ namespace UnderdogsEnhanced
 
         private bool IsAnySpikeViewActive()
         {
+            if (IsMissileCameraActive() && activeMissile != null)
+                return true;
+
             CameraSlot active = CameraSlot.ActiveInstance;
             if (active == null)
                 return false;
 
-            // 导弹视角始终显示UI（只要有活跃导弹）
-            if (active == missileSlot && activeMissile != null)
-                return true;
-
-            // 炮镜视角需要检查武器选择
             if (!IsSpikeWeaponSelected())
                 return false;
 
-            // 白光槽或热成像槽都算Spike视角
             return active == thermalSlot || active == daySlot;
+        }
+
+        private bool IsScopeSuppressionViewActive()
+        {
+            if (IsMissileCameraActive() && activeMissile != null)
+                return true;
+
+            CameraSlot active = CameraSlot.ActiveInstance;
+            if (active == null || !IsSpikeWeaponSelected())
+                return false;
+
+            return active == thermalSlot;
         }
 
         private bool IsSpikeWeaponSelected()
@@ -2420,17 +3531,36 @@ namespace UnderdogsEnhanced
             if (slot == null)
                 return false;
 
-            string nameValue = string.Concat(
-                slot.name ?? string.Empty,
-                " ",
-                slot.transform != null ? slot.transform.name : string.Empty,
-                " ",
-                slot.transform != null && slot.transform.parent != null ? slot.transform.parent.name : string.Empty).ToLowerInvariant();
-            return nameValue.Contains("commander")
-                || nameValue.Contains("peri")
-                || nameValue.Contains("head")
-                || nameValue.Contains("cupola")
-                || nameValue.Contains("tc");
+            bool matched = MarderSpikeSystem.MatchesExactSlotIdentity(
+                slot,
+                MarderSpikeSystem.CommanderSlotExactNames,
+                MarderSpikeSystem.CommanderSlotExactPathSuffixes);
+
+#if DEBUG
+            if (matched)
+                UnderdogsDebug.LogSpike($"CommanderLikeSlot exact match => {MarderSpikeSystem.DescribeSlot(slot)}");
+#endif
+            return matched;
+        }
+
+        private void LogViewGateState(CameraSlot activeSlot, bool allowed, string reason)
+        {
+#if DEBUG
+            CameraManager cameraManager = CameraManager.Instance;
+            string signature = string.Concat(
+                reason,
+                "|allowed=", allowed,
+                "|selected=", IsSpikeWeaponSelected(),
+                "|player=", IsPlayerControllingThisRig(),
+                "|ext=", cameraManager != null && cameraManager.ExteriorMode,
+                "|slot=", MarderSpikeSystem.DescribeSlot(activeSlot));
+
+            if (string.Equals(lastLoggedViewGateSignature, signature, StringComparison.Ordinal))
+                return;
+
+            lastLoggedViewGateSignature = signature;
+            UnderdogsDebug.LogSpike($"Spike view gate => {signature}");
+#endif
         }
 
         private void CleanupMissileSlotIfNeeded()
@@ -2438,11 +3568,27 @@ namespace UnderdogsEnhanced
             if (activeMissile != null)
                 return;
 
+            // 场景切换时 CameraManager 可能已销毁，跳过操作避免卡死
+            CameraManager cameraManager = CameraManager.Instance;
+            if (cameraManager == null)
+            {
+                // 直接清理对象，不尝试切换 slot
+                if (missileSlotObject != null)
+                {
+                    Destroy(missileSlotObject);
+                    missileSlotObject = null;
+                    SetMissileSlot(null);
+                }
+                return;
+            }
+
             if (missileSlot != null && CameraSlot.ActiveInstance == missileSlot)
             {
                 CameraSlot targetSlot = FindPreferredReturnSlot();
                 if (targetSlot != null && targetSlot != missileSlot)
-                    CameraSlot.SetActiveSlot(targetSlot);
+                {
+                    try { CameraSlot.SetActiveSlot(targetSlot); } catch { }
+                }
             }
 
             if (missileSlotObject != null)
@@ -2455,7 +3601,7 @@ namespace UnderdogsEnhanced
 
         private void UpdateDefaultScopeSuppression()
         {
-            bool shouldHide = IsAnySpikeViewActive();
+            bool shouldHide = IsScopeSuppressionViewActive();
             if (shouldHide)
             {
                 if (TrySetDefaultScopeRendered(false))
@@ -2486,7 +3632,7 @@ namespace UnderdogsEnhanced
 
         private void UpdateScopeCanvasSuppression()
         {
-            bool shouldHide = IsAnySpikeViewActive();
+            bool shouldHide = IsScopeSuppressionViewActive();
             if (shouldHide)
             {
                 SuppressScopeCanvases();
@@ -2594,8 +3740,8 @@ namespace UnderdogsEnhanced
             string n1 = canvas.name ?? string.Empty;
             string n2 = canvas.gameObject != null ? canvas.gameObject.name : string.Empty;
             string n3 = canvas.transform != null && canvas.transform.parent != null ? canvas.transform.parent.name : string.Empty;
-            string combined = (n1 + " " + n2 + " " + n3).ToLowerInvariant();
-            return combined.Contains("scope");
+            string combined = (n1 + " " + n2 + " " + n3);
+            return combined.Equals("Scope Sprite Scope", StringComparison.OrdinalIgnoreCase);
         }
 
         private int GetConfiguredFlirWidth()
@@ -2611,24 +3757,75 @@ namespace UnderdogsEnhanced
 
         private Material GetConfiguredBlitMaterial()
         {
-            // SPIKE uses a white-hot, no-scanline thermal material by default.
-            Material whiteHotMaterial = UEResourceController.GetThermalFlirWhiteBlitMaterialNoScope();
-            if (whiteHotMaterial != null)
+            return MarderSpikeAssets.CreateConfiguredBlitMaterial();
+        }
+
+        private Material GetWhiteHotBlitMaterial()
+        {
+            if (cachedWhiteHotBlitMaterial != null)
+                return cachedWhiteHotBlitMaterial;
+
+            Material source = UEResourceController.GetThermalFlirWhiteBlitMaterialNoScope();
+            if (source != null)
             {
-                return UEResourceController.CreateThermalMaterial(whiteHotMaterial,
-                    new ThermalConfig { ColorMode = ThermalColorMode.WhiteHot });
+                cachedWhiteHotBlitMaterial = UEResourceController.CreateThermalMaterial(source, GetWhiteHotThermalConfig());
+                return cachedWhiteHotBlitMaterial;
             }
 
-            // 回退到绿色热成像（基于 BMP1 MCLOS）
-            Material thermalMaterial = UEResourceController.GetThermalFlirBlitMaterial();
-            if (thermalMaterial != null)
+            source = UEResourceController.GetThermalFlirBlitMaterial();
+            if (source != null)
             {
-                return UEResourceController.CreateThermalMaterial(thermalMaterial,
-                    new ThermalConfig { ColorMode = ThermalColorMode.WhiteHot });
+                cachedWhiteHotBlitMaterial = UEResourceController.CreateThermalMaterial(source, GetWhiteHotThermalConfig());
+                return cachedWhiteHotBlitMaterial;
             }
 
-            Material noScan = UEResourceController.GetThermalFlirBlitMaterialNoScan();
-            return noScan != null ? noScan : thermalMaterial;
+            return null;
+        }
+
+        private ThermalConfig GetWhiteHotThermalConfig()
+        {
+            return new ThermalConfig
+            {
+                ColorMode = ThermalColorMode.WhiteHot,
+                ColdColor = new Color(0f, 0f, 0f, 1f),
+                HotColor = new Color(1f, 1f, 1f, 1f)
+            };
+        }
+
+        private void LogThermalState(string label, GameObject slotObject, CameraSlot slot, SimpleNightVision snv, PostProcessVolume flirOnlyVolume)
+        {
+            if (slot == null)
+                return;
+
+            string objectName = slotObject != null ? slotObject.name : "null";
+            string materialName = slot.FLIRBlitMaterialOverride != null ? slot.FLIRBlitMaterialOverride.name : "null";
+            string opticName = slot.PairedOptic != null ? slot.PairedOptic.name : "null";
+            string linkedDay = slot.LinkedDaySight != null ? slot.LinkedDaySight.name : "null";
+            string linkedNight = slot.LinkedNightSight != null ? slot.LinkedNightSight.name : "null";
+            Vector3 slotLocalPos = slot.transform.localPosition;
+            Vector3 dayLocalPos = daySlot != null ? daySlot.transform.localPosition : Vector3.zero;
+            Vector3 delta = daySlot != null ? slotLocalPos - dayLocalPos : slotLocalPos;
+            string signature = string.Concat(
+                label, "|",
+                slot.name, "|",
+                objectName, "|",
+                (CameraSlot.ActiveInstance == slot) ? "1" : "0", "|",
+                slot.VisionType.ToString(), "|",
+                materialName, "|",
+                opticName, "|",
+                linkedDay, "|",
+                linkedNight, "|",
+                snv != null ? "1" : "0", "|",
+                flirOnlyVolume != null ? flirOnlyVolume.name : "null", "|",
+                slot.DefaultFov.ToString());
+
+            if (string.Equals(lastThermalLogSignature, signature, StringComparison.Ordinal))
+                return;
+
+            lastThermalLogSignature = signature;
+
+            UnderdogsDebug.LogSpike(
+                $"[Marder Spike] {label}: slot={slot.name}, object={objectName}, active={CameraSlot.ActiveInstance == slot}, vision={slot.VisionType}, material={materialName}, pairedOptic={opticName}, linkedDay={linkedDay}, linkedNight={linkedNight}, snv={(snv != null)}, post={(flirOnlyVolume != null ? flirOnlyVolume.name : "null")}, slotLocal={slotLocalPos}, deltaVsDay={delta}, fov={slot.DefaultFov}");
         }
 
         private RectTransform CreateRect(string name, Transform parent, Vector2 anchoredPosition, Vector2 size)
@@ -2667,9 +3864,27 @@ namespace UnderdogsEnhanced
             CreateBar(parent, name + "V", new Vector2(sign.x * parent.sizeDelta.x * 0.5f, sign.y * (parent.sizeDelta.y * 0.5f - segment * 0.5f)), new Vector2(thickness, segment));
         }
 
+        private void CreateDiagonalCross(RectTransform parent, float length, float thickness)
+        {
+            CreateRotatedBar(parent, "DiagA", Vector2.zero, new Vector2(length, thickness), 45f);
+            CreateRotatedBar(parent, "DiagB", Vector2.zero, new Vector2(length, thickness), -45f);
+        }
+
         private void CreateBar(RectTransform parent, string name, Vector2 anchoredPosition, Vector2 size)
         {
             RectTransform rect = CreateRect(name, parent, anchoredPosition, size);
+            AddOverlayImage(rect);
+        }
+
+        private void CreateRotatedBar(RectTransform parent, string name, Vector2 anchoredPosition, Vector2 size, float zRotation)
+        {
+            RectTransform rect = CreateRect(name, parent, anchoredPosition, size);
+            rect.localRotation = Quaternion.Euler(0f, 0f, zRotation);
+            AddOverlayImage(rect);
+        }
+
+        private void AddOverlayImage(RectTransform rect)
+        {
             Image image = rect.gameObject.AddComponent<Image>();
             image.sprite = GetWhiteSprite();
             image.type = Image.Type.Simple;
@@ -2691,6 +3906,10 @@ namespace UnderdogsEnhanced
             whiteSprite.hideFlags = HideFlags.DontUnloadUnusedAsset;
             return whiteSprite;
         }
+    }
+
+    internal sealed class MarderSpikeThermalOpticMarker : MonoBehaviour
+    {
     }
 
     [HarmonyPatch(typeof(GHPC.Crew.CrewBrainWeaponsModule), "AdjustAimByRatio")]
@@ -2766,6 +3985,30 @@ namespace UnderdogsEnhanced
         private static void Prefix(WeaponSystem __instance)
         {
             MarderSpikeGuidanceRecovery.TryRecoverStaleGuidanceOnFire(__instance);
+        }
+    }
+
+    [HarmonyPatch(typeof(GHPC.UI.Hud.WeaponHud), "Update")]
+    internal static class MarderSpikeTopAttackHudPatch
+    {
+        private static void Postfix(GHPC.UI.Hud.WeaponHud __instance)
+        {
+            GHPC.Player.PlayerInput playerInput = __instance?._playerInput;
+            Vehicle playerVehicle = playerInput?.CurrentPlayerUnit as Vehicle;
+            if (playerVehicle == null)
+                return;
+
+            // Find the MarderSpikeRig for this vehicle
+            WeaponSystemInfo weaponInfo = playerInput.CurrentPlayerWeapon;
+            if (weaponInfo?.Weapon == null)
+                return;
+
+            MarderSpikeRig rig = weaponInfo.FCS?.GetComponent<MarderSpikeRig>();
+            if (rig == null || !rig.IsConfigured || !rig.TopAttackModeEnabled)
+                return;
+
+            // Add top-attack text to HUD
+            __instance._hudText.text = __instance._sb.ToString() + "\nTOP-ATTACK";
         }
     }
 }

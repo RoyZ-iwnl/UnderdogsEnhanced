@@ -43,7 +43,7 @@ namespace UnderdogsEnhanced
             if (!stab_brdm.Value && !brdm_lrf.Value) return;
 
 #if DEBUG
-            UnderdogsDebug.LogTiming($"[UE]   > 匹配 BRDM-2 改装 (stab={stab_brdm.Value} lrf={brdm_lrf.Value})");
+            UnderdogsDebug.LogTiming($"[TIMING]   > 匹配 BRDM-2 改装 (stab={stab_brdm.Value} lrf={brdm_lrf.Value})");
 #endif
 
             WeaponsManager weapons_manager = vic.GetComponent<WeaponsManager>();

@@ -16,7 +16,7 @@ using TMPro;
 using Reticle;
 using HarmonyLib;
 
-[assembly: MelonInfo(typeof(UnderdogsEnhancedMod), "Underdogs Enhanced", "1.5.0", "RoyZ;Based on ATLAS work")]
+[assembly: MelonInfo(typeof(UnderdogsEnhancedMod), "Underdogs Enhanced", "1.5.0-beta", "RoyZ;Based on ATLAS work")]
 [assembly: MelonGame("Radian Simulations LLC", "GHPC")]
 
 namespace UnderdogsEnhanced
@@ -26,8 +26,42 @@ namespace UnderdogsEnhanced
         public static MelonPreferences_Category cfg;
 
         private string currentGameplaySceneName = string.Empty;
+        private int sceneInitializationGeneration;
 
         private static HashSet<int> _modifiedVehicleIds = new HashSet<int>();
+
+        private static bool IsEnabled(MelonPreferences_Entry<bool> entry)
+        {
+            return entry != null && entry.Value;
+        }
+
+        private bool HasAnyVehicleFeatureEnabled()
+        {
+            return IsEnabled(Bmp1Main.bmp1_enabled)
+                || IsEnabled(Brdm2Main.brdm2_enabled)
+                || IsEnabled(MarderMain.marder_enabled)
+                || IsEnabled(LeopardMain.leopard_enabled)
+                || IsEnabled(Btr70Main.btr70_enabled)
+                || IsEnabled(Pt76Main.pt76_enabled)
+                || IsEnabled(T64Main.t64_enabled)
+                || IsEnabled(T54aMain.t54a_enabled)
+                || IsEnabled(T34Main.t34_enabled);
+        }
+
+        private bool IsCurrentSceneInitialization(string sceneName, int generation)
+        {
+            return generation == sceneInitializationGeneration
+                && string.Equals(currentGameplaySceneName, sceneName, System.StringComparison.Ordinal);
+        }
+
+        private bool ShouldAbortSceneInitialization(string sceneName, int buildIndex, int generation, string phase)
+        {
+            if (IsCurrentSceneInitialization(sceneName, generation))
+                return false;
+
+            //MelonLogger.Warning($"[SceneInit] scene={sceneName}, build={buildIndex}, phase={phase}, current={currentGameplaySceneName}");
+            return true;
+        }
 
         public override void OnInitializeMelon() {
             UEResourceController.Initialize();
@@ -44,6 +78,7 @@ namespace UnderdogsEnhanced
             T54aMain.Config(cfg);
             T34Main.Config(cfg);
             UERepairMain.Config(cfg);
+            Marder25mmLowRateAudio.Initialize();
          }
 
         private IEnumerator EnsureAmmoConversionsOnGameReady(GameState _)
@@ -65,17 +100,33 @@ namespace UnderdogsEnhanced
 #if DEBUG
             MelonLogger.Warning("|||||||||||||||||UnderdogsEnhanced DEBUG VERSION|||||||||||||||||");
 #endif
+            sceneInitializationGeneration++;
             currentGameplaySceneName = sceneName;
             UEAmmoConversionCoordinator.ResetSceneState();
+            Marder25mmLowRateAudio.OnSceneLoaded(sceneName);
+            BMP1MissileCameraPatch.OnSceneChanged(sceneName);
+            MarderSpikeSystem.OnSceneChanged(sceneName);
 
             UEResourceController.UnloadDynamicAssets();
 
+            bool hasVehicleFeaturesEnabled = HasAnyVehicleFeatureEnabled();
+
+            if (!hasVehicleFeaturesEnabled)
+            {
+                if (UECommonUtil.IsPrimaryMenuScene(sceneName))
+                    UEResourceController.ReleaseVanillaDonorAssets();
+
+                return;
+            }
+
             if (UECommonUtil.IsPrimaryMenuScene(sceneName))
             {
+                // 主菜单阶段只做轻量静态资源准备和 donor 引用释放。
+                // 不要在这里预热 donor；预热链会进入同步 Addressables.WaitForCompletion()，
+                // 在战斗场景退出到菜单的切换窗口里已验证会卡住主线程。
                 UEResourceController.ReleaseVanillaDonorAssets();
                 UEResourceController.LoadStaticAssets();
                 EMES18Optic.LoadStaticAssets();
-                UEResourceController.PrewarmMenuVanillaDonors();
             }
 
             if (UECommonUtil.IsMenuScene(sceneName)) return;
@@ -83,7 +134,7 @@ namespace UnderdogsEnhanced
             UEResourceController.PrewarmSceneSpecificVanillaDonors(sceneName);
 
             // 弹药转换先注册（确保在外观改装前执行）
-            if (Bmp1Main.ShouldScheduleAmmoConversion() || (MarderMain.marder_enabled.Value && MarderMain.marder_spike.Value) || LeopardMain.ShouldScheduleAmmoConversion())
+            if (Bmp1Main.ShouldScheduleAmmoConversion() || MarderMain.ShouldScheduleAmmoConversion() || LeopardMain.ShouldScheduleAmmoConversion())
                 StateController.RunOrDefer(GameState.GameReady, new GameStateEventHandler(EnsureAmmoConversionsOnGameReady), GameStatePriority.Medium);
 
             LeopardMain.OnSceneLoaded();
@@ -91,152 +142,161 @@ namespace UnderdogsEnhanced
 
         public override async void OnSceneWasInitialized(int buildIndex, string sceneName)
         {
-            if (UECommonUtil.IsMenuScene(sceneName)) return;
-
-            UEResourceController.LoadDynamicAssets();
-            UEResourceController.PrewarmCommonVanillaDonors();
-
-            float _sceneStartTime = Time.realtimeSinceStartup;
-#if DEBUG
-            UnderdogsDebug.LogTiming($"[UE] >>> OnSceneWasInitialized | 场景={sceneName} | 时间={System.DateTime.Now:HH:mm:ss.fff}");
-
-            // 初始化调试UI（运行时开关，不依赖编译配置）
-            FCSDebugUI.Init();
-#endif
-
-            Vehicle[] all_vehicles = new Vehicle[0];
-            int _waitCount = 0;
-            const int _maxWaitAttempts = 60; // 60 * 500ms = 30s max
-            do {
-                await Task.Delay(500);
-                _waitCount++;
-                all_vehicles = Object.FindObjectsOfType<Vehicle>();
-#if DEBUG
-                if (UnderdogsDebug.DEBUG_TIMING && _waitCount % 4 == 0)
-                    MelonLogger.Msg($"[UE] 等待载具中... {_waitCount * 500}ms | 当前={all_vehicles?.Length ?? 0}个");
-#endif
-            } while (_waitCount < _maxWaitAttempts && (all_vehicles == null || all_vehicles.Length == 0 || !all_vehicles.Any(v => v != null && (
-                v.FriendlyName == "BMP-1" || v.FriendlyName == "BMP-1P" ||
-                v.FriendlyName == "BRDM-2" || v.FriendlyName == "BTR-70" ||
-                v.FriendlyName == "PT-76B" || v.FriendlyName.StartsWith("Marder") ||
-                v.FriendlyName.StartsWith("Leopard") || v.FriendlyName.StartsWith("T-64")))));
-
-            if (all_vehicles == null || all_vehicles.Length == 0)
+            try
             {
+                if (UECommonUtil.IsMenuScene(sceneName)) return;
+                if (!HasAnyVehicleFeatureEnabled())
+                    return;
+                int sceneGeneration = sceneInitializationGeneration;
+                if (ShouldAbortSceneInitialization(sceneName, buildIndex, sceneGeneration, "enter"))
+                    return;
+
+                UEResourceController.LoadDynamicAssets();
+                UEResourceController.PrewarmCommonVanillaDonors();
+                if (ShouldAbortSceneInitialization(sceneName, buildIndex, sceneGeneration, "post_asset_load"))
+                    return;
+
+                float _sceneStartTime = Time.realtimeSinceStartup;
 #if DEBUG
-                if (UnderdogsDebug.DEBUG_TIMING)
-                    MelonLogger.Warning("[UE] 30秒内未检测到任何 Vehicle，跳过本次场景改装");
-#endif
-                return;
-            }
-
-#if DEBUG
-            UnderdogsDebug.LogTiming($"[UE] 等待 {_waitCount * 500}ms 后发现 {all_vehicles.Length} 个载具 | 距场景加载 {Time.realtimeSinceStartup - _sceneStartTime:F3}s");
-#endif
-
-
-
-
-#if DEBUG
-            UnderdogsDebug.DumpAllVehiclesDetailedInfo(all_vehicles);
-            UnderdogsDebug.DumpAllVehiclesChildren(all_vehicles);
-            UnderdogsDebug.DumpAllArmorData();
+                UnderdogsDebug.LogTiming($"[TIMING] >>> OnSceneWasInitialized | 场景={sceneName} | 时间={System.DateTime.Now:HH:mm:ss.fff}");
 #endif
 
-            var currentIds = new HashSet<int>(all_vehicles.Where(v => v != null).Select(v => v.GetInstanceID()));
-            _modifiedVehicleIds.IntersectWith(currentIds);
-
-            // 试车场执行2轮扫描，第2轮捕获GMPC延迟生成的载具
-            int _uePassCount = (sceneName == "TR01_showcase") ? 2 : 1;
-
-            for (int _uePass = 1; _uePass <= _uePassCount; _uePass++)
-            {
-                if (_uePass > 1)
+                Vehicle[] all_vehicles = new Vehicle[0];
+                int _waitCount = 0;
+                const int _maxWaitAttempts = 60; // 60 * 500ms = 30s max
+                do
                 {
-#if DEBUG
-                    if (UnderdogsDebug.DEBUG_TIMING)
-                        MelonLogger.Msg($"[UE] 试车场第{_uePass}轮: 等待3秒后重新扫描载具...");
-#endif
+                    await Task.Delay(500);
+                    if (ShouldAbortSceneInitialization(sceneName, buildIndex, sceneGeneration, "wait_vehicle_spawn"))
+                        return;
 
-                    await Task.Delay(3000);
+                    _waitCount++;
                     all_vehicles = Object.FindObjectsOfType<Vehicle>();
 #if DEBUG
+                    if (UnderdogsDebug.DEBUG_TIMING && _waitCount % 4 == 0)
+                        MelonLogger.Msg($"[TIMING] 等待载具中... {_waitCount * 500}ms | 当前={all_vehicles?.Length ?? 0}个");
+#endif
+                } while (_waitCount < _maxWaitAttempts && (all_vehicles == null || all_vehicles.Length == 0 || !all_vehicles.Any(v => v != null && (
+                    v.FriendlyName == "BMP-1" || v.FriendlyName == "BMP-1P" ||
+                    v.FriendlyName == "BRDM-2" || v.FriendlyName == "BTR-70" ||
+                    v.FriendlyName == "PT-76B" || v.FriendlyName.StartsWith("Marder") ||
+                    v.FriendlyName.StartsWith("Leopard") || v.FriendlyName.StartsWith("T-64")))));
+
+                if (ShouldAbortSceneInitialization(sceneName, buildIndex, sceneGeneration, "post_wait"))
+                    return;
+
+                if (all_vehicles == null || all_vehicles.Length == 0)
+                {
+#if DEBUG
                     if (UnderdogsDebug.DEBUG_TIMING)
-                        MelonLogger.Msg($"[UE] 第{_uePass}轮扫描到 {all_vehicles.Length} 个载具");
+                        MelonLogger.Warning("[TIMING] 30秒内未检测到任何 Vehicle，跳过本次场景改装");
 #endif
+                    return;
                 }
 
-                float _passStart = Time.realtimeSinceStartup;
 #if DEBUG
-                if (UnderdogsDebug.DEBUG_TIMING)
-                    MelonLogger.Msg($"[UE] === 第{_uePass}/{_uePassCount}轮改装开始 | 场景={sceneName} | 载具数={all_vehicles.Length} | {System.DateTime.Now:HH:mm:ss.fff} ===");
+                UnderdogsDebug.LogTiming($"[TIMING] 等待 {_waitCount * 500}ms 后发现 {all_vehicles.Length} 个载具 | 距场景加载 {Time.realtimeSinceStartup - _sceneStartTime:F3}s");
 #endif
 
-                foreach (Vehicle vic in all_vehicles)
+                var currentIds = new HashSet<int>(all_vehicles.Where(v => v != null).Select(v => v.GetInstanceID()));
+                _modifiedVehicleIds.IntersectWith(currentIds);
+
+                // 试车场执行2轮扫描，第2轮捕获GMPC延迟生成的载具
+                int _uePassCount = (sceneName == "TR01_showcase") ? 2 : 1;
+
+                for (int _uePass = 1; _uePass <= _uePassCount; _uePass++)
                 {
-                    if (vic == null) continue;
-                    int _vid = vic.GetInstanceID();
-                    if (_modifiedVehicleIds.Contains(_vid)) continue;
-                    _modifiedVehicleIds.Add(_vid);
+                    if (ShouldAbortSceneInitialization(sceneName, buildIndex, sceneGeneration, $"before_pass_{_uePass}"))
+                        return;
 
-                    string name = vic.FriendlyName;
+                    if (_uePass > 1)
+                    {
 #if DEBUG
-                    bool dumpA1A3 = UnderdogsDebug.DEBUG_VEHICLE && name == "Leopard A1A3";
-                    if (dumpA1A3)
-                        UnderdogsDebug.DumpVehicleOpticsSnapshot(vic, "PRE", detailedOptics: true);
-                    UnderdogsDebug.LogTiming($"[UE] 第{_uePass}轮 >> [{name}] ID={_vid} obj={vic.gameObject.name}");
+                        if (UnderdogsDebug.DEBUG_TIMING)
+                            MelonLogger.Msg($"[TIMING] 试车场第{_uePass}轮: 等待3秒后重新扫描载具...");
 #endif
 
-                    try
-                    {
+                        await Task.Delay(3000);
+                        if (ShouldAbortSceneInitialization(sceneName, buildIndex, sceneGeneration, $"pass_{_uePass}_delay"))
+                            return;
 
-                // 调用各载具模块的 Apply 方法
-                Bmp1Main.Apply(vic);
-                MarderMain.Apply(vic);
-                if (MarderMain.marder_enabled.Value && MarderMain.marder_spike.Value && (name == "Marder 1A2" || name == "Marder A1+"))
-                {
-                    WeaponsManager weapons_manager = vic.GetComponent<WeaponsManager>();
-                    WeaponSystemInfo milan_info = weapons_manager != null && weapons_manager.Weapons != null && weapons_manager.Weapons.Length > 1
-                        ? weapons_manager.Weapons[1]
-                        : null;
-
-                    if (milan_info?.Weapon != null)
-                    {
-                        MarderSpikeSystem.TryApply(vic, milan_info);
-                    }
-                }
-
-                LeopardMain.Apply(vic);
-
-                // 调用各载具模块的 Apply 方法
-                Btr70Main.Apply(vic);
-                Pt76Main.Apply(vic);
-                T64Main.Apply(vic);
-                T54aMain.Apply(vic);
-                T34Main.Apply(vic);
-
+                        all_vehicles = Object.FindObjectsOfType<Vehicle>();
 #if DEBUG
-                    if (dumpA1A3)
-                        UnderdogsDebug.DumpVehicleOpticsSnapshot(vic, "POST", detailedOptics: true);
+                        if (UnderdogsDebug.DEBUG_TIMING)
+                            MelonLogger.Msg($"[TIMING] 第{_uePass}轮扫描到 {all_vehicles.Length} 个载具");
+#endif
+                    }
+
+                    float _passStart = Time.realtimeSinceStartup;
+#if DEBUG
+                    if (UnderdogsDebug.DEBUG_TIMING)
+                        MelonLogger.Msg($"[TIMING] === 第{_uePass}/{_uePassCount}轮改装开始 | 场景={sceneName} | 载具数={all_vehicles.Length} | {System.DateTime.Now:HH:mm:ss.fff} ===");
 #endif
 
-                    } // end try
-                    catch (System.Exception ex)
+                    foreach (Vehicle vic in all_vehicles)
                     {
-                        MelonLogger.Error($"[UE] Pass {_uePass} modification failed for [{name}] (ID={_vid}): {ex}");
-                    }
-                } // end foreach
+                        if (ShouldAbortSceneInitialization(sceneName, buildIndex, sceneGeneration, $"pass_{_uePass}_vehicle_loop"))
+                            return;
+
+                        if (vic == null) continue;
+                        int _vid = vic.GetInstanceID();
+                        if (_modifiedVehicleIds.Contains(_vid)) continue;
+                        _modifiedVehicleIds.Add(_vid);
+
+                        string name = vic.FriendlyName;
+#if DEBUG
+                        UnderdogsDebug.LogTiming($"[TIMING] 第{_uePass}轮 >> [{name}] ID={_vid} obj={vic.gameObject.name}");
+#endif
+
+                        try
+                        {
+
+                            Bmp1Main.Apply(vic);
+                            MarderMain.Apply(vic);
+                            //Marder Spike 改装单独应用
+                        if (MarderMain.marder_enabled.Value && MarderMain.marder_spike.Value && (name == "Marder 1A2" || name == "Marder A1+" || name == "Marder A1-"))
+                        {
+                            WeaponsManager weapons_manager = vic.GetComponent<WeaponsManager>();
+                            WeaponSystemInfo milan_info = weapons_manager != null && weapons_manager.Weapons != null && weapons_manager.Weapons.Length > 1
+                                ? weapons_manager.Weapons[1]
+                                : null;
+
+                            if (milan_info?.Weapon != null)
+                            {
+                                MarderSpikeSystem.TryApply(vic, milan_info);
+                            }
+                        }
+                            LeopardMain.Apply(vic);
+                            Brdm2Main.Apply(vic);
+                            Btr70Main.Apply(vic);
+                            Pt76Main.Apply(vic);
+                            T64Main.Apply(vic);
+                            T54aMain.Apply(vic);
+                            T34Main.Apply(vic);
+
+                        } // end try
+                        catch (System.Exception ex)
+                        {
+                            MelonLogger.Error($"[TIMING] Pass {_uePass} modification failed for [{name}] (ID={_vid}): {ex}");
+                        }
+                    } // end foreach
 
 #if DEBUG
+                    if (UnderdogsDebug.DEBUG_TIMING)
+                        MelonLogger.Msg($"[TIMING] === 第{_uePass}/{_uePassCount}轮改装完成 | 耗时={Time.realtimeSinceStartup - _passStart:F3}s ===");
+                } // end for pass
+
                 if (UnderdogsDebug.DEBUG_TIMING)
-                    MelonLogger.Msg($"[UE] === 第{_uePass}/{_uePassCount}轮改装完成 | 耗时={Time.realtimeSinceStartup - _passStart:F3}s ===");
-            } // end for pass
-
-            if (UnderdogsDebug.DEBUG_TIMING)
-                MelonLogger.Msg($"[UE] <<< OnSceneWasInitialized 结束 | 总耗时={Time.realtimeSinceStartup - _sceneStartTime:F3}s");
+                    MelonLogger.Msg($"[TIMING] <<< OnSceneWasInitialized 结束 | 总耗时={Time.realtimeSinceStartup - _sceneStartTime:F3}s");
 #else
-            } // end for pass
+                } // end for pass
 #endif
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Error($"OnSceneWasInitialized critical failure: {ex}");
+                MelonLogger.Error($"Scene: {sceneName} | BuildIndex: {buildIndex}");
+            }
         }
     }
 }

@@ -30,7 +30,7 @@ namespace UnderdogsEnhanced
             if (!t54a_lrf.Value) return;
 
 #if DEBUG
-            UnderdogsDebug.LogTiming($"[UE]   > 匹配 T-54A 测距改装");
+            UnderdogsDebug.LogTiming($"[TIMING]   > 匹配 T-54A 测距改装");
 #endif
 
             WeaponsManager wm = vic.GetComponent<WeaponsManager>();

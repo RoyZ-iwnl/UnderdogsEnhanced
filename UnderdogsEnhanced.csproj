@@ -126,25 +126,29 @@
     <Compile Include="UECommonUtil.cs" />
     <Compile Include="UEAssetUtil.cs" />
     <Compile Include="UEResourceController.cs" />
-    <Compile Include="UEResourceModule.cs" />
     <Compile Include="LimitedLRF.cs" />
     <!-- UEDebug -->
     <Compile Include="UEDebug\UnderdogsDebug.cs" />
-    <Compile Include="UEDebug\AmmoDebugUI.cs" />
-    <Compile Include="UEDebug\EMES18DebugUI.cs" />
-    <Compile Include="UEDebug\FCSDebugUI.cs" />
     <!-- Vics\BMP1 -->
     <Compile Include="Vics\BMP1\Bmp1Main.cs" />
     <Compile Include="Vics\BMP1\BMP1MCLOSAmmo.cs" />
     <Compile Include="Vics\BMP1\BMP1MissileCamera.cs" />
     <!-- Vics\Marder -->
     <Compile Include="Vics\Marder\MarderMain.cs" />
+    <Compile Include="Vics\Marder\MarderDualTrackSteering.cs" />
+    <Compile Include="Vics\Marder\Marder25mmAmmo.cs" />
+    <Compile Include="Vics\Marder\Marder25mmFireRate.cs" />
+    <Compile Include="Vics\Marder\Marder35mmAmmo.cs" />
+    <Compile Include="Vics\Marder\Marder35mmFireRate.cs" />
+    <Compile Include="Vics\Marder\MarderThermalRetrofit.cs" />
+    <Compile Include="Vics\Marder\MarderSpikeAssets.cs" />
     <Compile Include="Vics\Leo1\Leopard1Model.cs" />
     <Compile Include="Vics\Marder\MarderSpikeAmmo.cs" />
     <Compile Include="Vics\Marder\MarderSpikeSystem.cs" />
     <Compile Include="Vics\Marder\MarderSpikeMissileCameraFollow.cs" />
     <Compile Include="Vics\Marder\MarderSpikeTrackingDimensions.cs" />
     <Compile Include="Vics\Marder\SpikeInfraredTracker.cs" />
+    <Compile Include="Vics\Marder\SpikeTopAttackTracker.cs" />
       <!-- Vics\Leo1 -->
       <Compile Include="Vics\Leo1\LeopardMain.cs" />
       <Compile Include="Vics\Leo1\Leopard1Ammo.cs" />

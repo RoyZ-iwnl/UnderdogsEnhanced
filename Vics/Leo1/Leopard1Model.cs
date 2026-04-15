@@ -103,7 +103,7 @@ namespace UnderdogsEnhanced
                     ApplyTurretModifications(vicGo, turretAddonRoot, newTurretMesh);
 
                     // 3. 修改原装甲数值
-                    ModifyArmorValues(vicGo);
+                    //ModifyArmorValues(vicGo);
 
                     // 4. 更新车辆名称
                     UpdateVehicleName(vic);
@@ -228,11 +228,11 @@ namespace UnderdogsEnhanced
 
                 UnderdogsDebug.LogLeo($"[Leopard1Model] EMES已创建: pos={emesInstance.transform.localPosition}");
 
-                // 诊断：检查VISUAL材质并设置FLIR
+                // 检查VISUAL材质并设置FLIR
                 Transform emesVisualInst = emesInstance.transform.Find("VISUAL");
                 if (emesVisualInst != null)
                 {
-                    // 关键：Instantiate后重新设置FLIR shader和HeatSource
+                    // Instantiate后重新设置FLIR shader和HeatSource
                     UECommonUtil.SetupFLIRShaders(emesVisualInst.gameObject, 0.55f);
                     UnderdogsDebug.LogLeo($"[Leopard1Model] VISUAL FLIR已设置");
                 }
@@ -241,11 +241,11 @@ namespace UnderdogsEnhanced
                 Transform emesHitboxInst = emesInstance.transform.Find("HITBOX");
                 if (emesHitboxInst != null)
                 {
-                    // 关键：Instantiate后重新设置tag/layer（可能丢失）
+                    // Instantiate后重新设置tag/layer（可能丢失）
                     emesHitboxInst.tag = "Penetrable";
                     emesHitboxInst.gameObject.layer = 8;
 
-                    // 修复：确保MeshCollider有有效的mesh
+                    // 确保MeshCollider有有效的mesh
                     MeshCollider mc = emesHitboxInst.GetComponent<MeshCollider>();
                     MeshFilter mf = emesHitboxInst.GetComponent<MeshFilter>();
 
@@ -307,14 +307,14 @@ namespace UnderdogsEnhanced
                         UnderdogsDebug.LogLeoWarning($"[Leopard1Model] HITBOX缺少组件: MeshCollider={(mc != null)}, MeshFilter={(mf != null)}, mesh={(mf?.sharedMesh?.name ?? "null")}");
                     }
 
-                    // 硬编码：EMES-18可破坏，生命值5
+                    // 硬编码：EMES-18可破坏，生命值20
                     GHPC.Equipment.DestructibleComponent destructible = emesHitboxInst.GetComponent<GHPC.Equipment.DestructibleComponent>();
                     if (destructible == null)
                         destructible = emesHitboxInst.gameObject.AddComponent<GHPC.Equipment.DestructibleComponent>();
-                    destructible._health = 5f;
-                    destructible._fullHealth = 5f;
+                    destructible._health = 20f;
+                    destructible._fullHealth = 20f;
                     destructible._pressureTolerance = 1f;
-                    destructible._shockResistance = 0.25f;
+                    destructible._shockResistance = 0.50f;
                     destructible._name = "EMES-18";
 
                     UnderdogsDebug.LogLeo($"[Leopard1Model] HITBOX可破坏组件已配置: health={destructible._health}");
@@ -326,7 +326,7 @@ namespace UnderdogsEnhanced
                         // 注册到FCS，使用游戏内置的激光损毁机制
                         fcs.LaserComponent = destructible;
                         destructible.Destroyed += fcs.LaserDestroyed;
-                        UnderdogsDebug.LogLeo($"[Leopard1Model] EMES18已注册为FCS激光组件，损毁时将触发游戏内置提示");
+                        UnderdogsDebug.LogLeo($"[Leopard1Model] EMES18已注册为FCS激光组件");
                     }
                     else
                     {
@@ -335,16 +335,7 @@ namespace UnderdogsEnhanced
                 }
             }
         }
-
-        private static void SetPrivateField(object obj, string fieldName, object value)
-        {
-            var field = obj.GetType().GetField(fieldName,
-                System.Reflection.BindingFlags.Instance |
-                System.Reflection.BindingFlags.Public |
-                System.Reflection.BindingFlags.NonPublic);
-            if (field != null)
-                field.SetValue(obj, value);
-        }
+               
 
         // ============================================================
         // 3. 修改装甲数值

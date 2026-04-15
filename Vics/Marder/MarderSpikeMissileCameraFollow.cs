@@ -30,9 +30,11 @@ namespace UnderdogsEnhanced
         private GameObject donorOpticNode;
         private CameraSlot previousSlot;
         private CameraSlot latestNonMissileSlot;
+        private float previousSlotFov;
+        private float latestNonMissileSlotFov;
+        private float preferredReturnSlotFov;
         private bool previousHadActiveSlot;
         private bool previousExteriorMode;
-        private bool restoreDonorOnExit;
         private bool initialized;
         private bool manualModeActive;
         private bool launchViewRequested;
@@ -61,7 +63,7 @@ namespace UnderdogsEnhanced
                 return;
 
             ownerRig?.OnMissileFollowReady(this);
-            if (manualModeActive || launchViewRequested)
+            if ((manualModeActive || launchViewRequested) && ownerRig != null && ownerRig.ShouldHoldMissileCamera(this))
                 ActivateMissileCamera();
         }
 
@@ -73,16 +75,15 @@ namespace UnderdogsEnhanced
         internal void EnterMissileView(bool manual, CameraSlot returnSlot)
         {
             preferredReturnSlot = returnSlot;
+            preferredReturnSlotFov = CaptureLiveSlotFovSnapshot(returnSlot);
             manualModeActive = manual;
             launchViewRequested = true;
 
             if (!initialized || restored)
                 return;
 
-            if (missileSlot != null && CameraSlot.ActiveInstance != missileSlot)
-                CameraSlot.SetActiveSlot(missileSlot);
-
-            ActivateMissileCamera();
+            if (ownerRig != null && ownerRig.ShouldHoldMissileCamera(this))
+                ActivateMissileCamera();
         }
 
         private void Start()
@@ -92,11 +93,20 @@ namespace UnderdogsEnhanced
             cameraManager = CameraManager.Instance;
             missileBody = GetComponent<Rigidbody>();
             donorOpticNode = ownerRig != null ? ownerRig.GetMissileCameraDonorObject() : null;
+
+            // 如果关键依赖无效，延迟初始化或跳过
+            if (cameraManager == null || mainCam == null)
+            {
+                initialized = true;
+                ownerRig?.OnMissileFollowReady(this);
+                return;
+            }
+
             CreateMissileSlot();
             initialized = true;
             ownerRig?.OnMissileFollowReady(this);
 
-            if (launchViewRequested)
+            if (launchViewRequested && ownerRig != null && ownerRig.ShouldHoldMissileCamera(this))
                 ActivateMissileCamera();
 
 #if DEBUG
@@ -120,7 +130,15 @@ namespace UnderdogsEnhanced
             if (cameraManager == null)
                 cameraManager = CameraManager.Instance;
 
-            bool shouldUseMissileView = launchViewRequested || ShouldHoldMissileView();
+            // 如果 CameraManager 持续为 null，可能场景正在切换，应该清理
+            if (cameraManager == null || mainCam == null)
+            {
+                Restore();
+                return;
+            }
+
+            bool shouldUseMissileView = (launchViewRequested && ownerRig != null && ownerRig.ShouldHoldMissileCamera(this))
+                || ShouldHoldMissileView();
             if (shouldUseMissileView && !cameraActive)
                 ActivateMissileCamera();
             else if (!shouldUseMissileView && cameraActive)
@@ -128,8 +146,6 @@ namespace UnderdogsEnhanced
 
             if (!cameraActive)
                 return;
-
-            TrySetExteriorMode(cameraManager, false);
 
             if (mainCam == null)
                 return;
@@ -152,7 +168,6 @@ namespace UnderdogsEnhanced
 
             restored = true;
             DeactivateMissileCamera(true);
-            UnregisterMissileSlot();
 
             if (missileSlotObject != null)
             {
@@ -174,16 +189,40 @@ namespace UnderdogsEnhanced
             if (missileSlotObject != null)
                 return;
 
+            // 检查关键依赖是否有效，避免在场景切换时创建失败
+            if (cameraManager == null)
+                cameraManager = CameraManager.Instance;
+            if (mainCam == null)
+                mainCam = CameraManager.MainCam;
+
+            // 如果 CameraManager 不存在，跳过创建（可能场景正在切换）
+            if (cameraManager == null || mainCam == null)
+            {
+                return;
+            }
+
             Transform parent = mainCam != null && mainCam.transform.parent != null
                 ? mainCam.transform.parent
                 : launchVehicle != null ? launchVehicle.transform : transform;
 
             missileSlotObject = new GameObject(MissileSlotName);
             missileSlotObject.transform.SetParent(parent, false);
-            missileSlot = missileSlotObject.AddComponent<CameraSlot>();
+
+            try
+            {
+                missileSlot = missileSlotObject.AddComponent<CameraSlot>();
+            }
+            catch (System.Exception)
+            {
+                if (missileSlotObject != null)
+                {
+                    Destroy(missileSlotObject);
+                    missileSlotObject = null;
+                }
+                return;
+            }
 
             ownerRig?.ConfigureMissileViewSlot(missileSlotObject, missileSlot, null);
-            RegisterMissileSlot();
         }
 
         private void ActivateMissileCamera()
@@ -196,15 +235,22 @@ namespace UnderdogsEnhanced
             if (cameraManager == null)
                 cameraManager = CameraManager.Instance;
             donorOpticNode = donorOpticNode != null ? donorOpticNode : ownerRig != null ? ownerRig.GetMissileCameraDonorObject() : null;
+            previousExteriorMode = cameraManager != null && cameraManager.ExteriorMode;
 
             previousSlot = CameraSlot.ActiveInstance;
-            if (previousSlot == missileSlot)
-                previousSlot = preferredReturnSlot != null ? preferredReturnSlot : latestNonMissileSlot != null ? latestNonMissileSlot : ownerRig != null ? ownerRig.GetPreferredReturnSlotForMissile() : null;
             previousHadActiveSlot = previousSlot != null;
-            previousExteriorMode = cameraManager != null && cameraManager.ExteriorMode;
-            restoreDonorOnExit = donorOpticNode != null && donorOpticNode.activeSelf && previousSlot != null && !previousSlot.IsExterior && !previousExteriorMode;
             if (previousSlot != null && previousSlot != missileSlot)
+            {
+                previousSlotFov = CaptureLiveSlotFovSnapshot(previousSlot);
                 latestNonMissileSlot = previousSlot;
+                latestNonMissileSlotFov = previousSlotFov;
+                if (preferredReturnSlot == previousSlot && previousSlotFov > 0.1f)
+                    preferredReturnSlotFov = previousSlotFov;
+            }
+            else
+            {
+                previousSlotFov = 0f;
+            }
 
             if (mainCam != null)
             {
@@ -212,14 +258,6 @@ namespace UnderdogsEnhanced
                 camOriginalLocalRot = mainCam.transform.localRotation;
                 camOriginalFov = mainCam.fieldOfView;
             }
-
-            TrySetExteriorMode(cameraManager, false);
-
-            if (donorOpticNode != null)
-                donorOpticNode.SetActive(false);
-
-            if (missileSlot != null && CameraSlot.ActiveInstance != missileSlot)
-                CameraSlot.SetActiveSlot(missileSlot);
 
             if (mainCam != null)
                 mainCam.fieldOfView = MissileCameraFov;
@@ -241,17 +279,24 @@ namespace UnderdogsEnhanced
 
             cameraActive = false;
 
+            // 确保在 CameraManager 有效的情况下才尝试恢复
+            if (cameraManager == null)
+                cameraManager = CameraManager.Instance;
+
+            CameraSlot restoreReferenceSlot = restoreSlot ? TryRestoreCameraSlot() : CameraSlot.ActiveInstance;
+            if (restoreSlot && cameraManager != null)
+                TrySetExteriorMode(cameraManager, previousExteriorMode);
+
+            if (mainCam == null)
+                mainCam = CameraManager.MainCam;
+
             if (mainCam != null)
             {
                 mainCam.transform.localPosition = camOriginalLocalPos;
                 mainCam.transform.localRotation = camOriginalLocalRot;
-                mainCam.fieldOfView = ResolveRestoreFov();
+                mainCam.fieldOfView = ResolveRestoreFov(restoreReferenceSlot);
             }
 
-            TrySetExteriorMode(cameraManager, previousExteriorMode);
-            if (restoreSlot)
-                TryRestoreCameraSlot();
-            RestoreDonorNode();
             RestoreMissileAudio();
 
 #if DEBUG
@@ -259,8 +304,18 @@ namespace UnderdogsEnhanced
 #endif
         }
 
-        private void TryRestoreCameraSlot()
+        private CameraSlot TryRestoreCameraSlot()
         {
+            // 如果 CameraManager 已经不存在（场景切换），直接返回 null 不尝试切换
+            if (cameraManager == null)
+            {
+                cameraManager = CameraManager.Instance;
+                if (cameraManager == null)
+                {
+                    return null;
+                }
+            }
+
             CameraSlot targetSlot = preferredReturnSlot != null ? preferredReturnSlot : ownerRig != null ? ownerRig.GetPreferredReturnSlotForMissile() : null;
             if (targetSlot == null || targetSlot == missileSlot)
                 targetSlot = latestNonMissileSlot;
@@ -284,40 +339,65 @@ namespace UnderdogsEnhanced
                 }
             }
 
-            if (targetSlot != null && CameraSlot.ActiveInstance != targetSlot)
-                CameraSlot.SetActiveSlot(targetSlot);
-            else if (!previousHadActiveSlot && previousExteriorMode)
-                CameraSlot.SetActiveSlot(null);
+            // 只有在 CameraManager 有效时才尝试切换 slot
+            if (cameraManager != null)
+            {
+                if (targetSlot != null && CameraSlot.ActiveInstance != targetSlot)
+                    CameraSlot.SetActiveSlot(targetSlot);
+                else if (!previousHadActiveSlot && previousExteriorMode)
+                    CameraSlot.SetActiveSlot(null);
+            }
+
+            return targetSlot;
         }
 
-        private float ResolveRestoreFov()
+        private float ResolveRestoreFov(CameraSlot targetSlot)
         {
+            float targetSnapshotFov = ResolveStoredSnapshotFov(targetSlot);
+            if (targetSnapshotFov > 0.1f)
+                return targetSnapshotFov;
+
+            float targetCurrentFov = ResolveSlotCurrentFov(targetSlot);
+            if (targetCurrentFov > 0.1f)
+                return targetCurrentFov;
+
             CameraSlot activeSlot = CameraSlot.ActiveInstance;
-            if (activeSlot != null && activeSlot != missileSlot && activeSlot.DefaultFov > 0.1f)
-                return activeSlot.DefaultFov;
+            float activeSnapshotFov = ResolveStoredSnapshotFov(activeSlot);
+            if (activeSnapshotFov > 0.1f)
+                return activeSnapshotFov;
 
-            CameraSlot refSlot = latestNonMissileSlot != null && latestNonMissileSlot != missileSlot
-                ? latestNonMissileSlot
-                : previousSlot;
+            float activeCurrentFov = ResolveSlotCurrentFov(activeSlot);
+            if (activeCurrentFov > 0.1f)
+                return activeCurrentFov;
 
-            if (refSlot != null && refSlot.DefaultFov > 0.1f)
-                return refSlot.DefaultFov;
+            float latestSnapshotFov = ResolveStoredSnapshotFov(latestNonMissileSlot);
+            if (latestSnapshotFov > 0.1f)
+                return latestSnapshotFov;
 
-            return previousExteriorMode ? 60f : camOriginalFov;
+            float latestCurrentFov = ResolveSlotCurrentFov(latestNonMissileSlot);
+            if (latestCurrentFov > 0.1f)
+                return latestCurrentFov;
+
+            float previousSnapshot = ResolveStoredSnapshotFov(previousSlot);
+            if (previousSnapshot > 0.1f)
+                return previousSnapshot;
+
+            float previousCurrentFov = ResolveSlotCurrentFov(previousSlot);
+            if (previousCurrentFov > 0.1f)
+                return previousCurrentFov;
+
+            if (camOriginalFov > 0.1f)
+                return camOriginalFov;
+
+            return 60f;
         }
 
         private bool ShouldHoldMissileView()
         {
-            if (missileSlot == null || round == null || round.IsDestroyed)
+            if (round == null || round.IsDestroyed)
                 return false;
 
-            if (ownerRig == null || !ownerRig.IsPlayerControllingThisRig())
-                return false;
-
-            if (cameraManager != null && cameraManager.ExteriorMode)
-                return false;
-
-            return CameraSlot.ActiveInstance == missileSlot;
+            return ownerRig != null && ownerRig.ShouldHoldMissileCamera(this);
         }
 
         private void SetupMissileAudio()
@@ -360,11 +440,57 @@ namespace UnderdogsEnhanced
 
         private void RestoreDonorNode()
         {
-            if (donorOpticNode == null)
-                return;
+        }
 
-            bool interiorOpticSlot = CameraSlot.ActiveInstance != null && !CameraSlot.ActiveInstance.IsExterior;
-            donorOpticNode.SetActive(restoreDonorOnExit && interiorOpticSlot);
+        private float CaptureLiveSlotFovSnapshot(CameraSlot slot)
+        {
+            if (slot == null || slot == missileSlot)
+                return 0f;
+
+            if (slot == CameraSlot.ActiveInstance && mainCam != null && mainCam.fieldOfView > 0.1f)
+                return mainCam.fieldOfView;
+
+            return ResolveSlotCurrentFov(slot);
+        }
+
+        private float ResolveStoredSnapshotFov(CameraSlot slot)
+        {
+            if (slot == null || slot == missileSlot)
+                return 0f;
+
+            if (slot == previousSlot && previousSlotFov > 0.1f)
+                return previousSlotFov;
+
+            if (slot == latestNonMissileSlot && latestNonMissileSlotFov > 0.1f)
+                return latestNonMissileSlotFov;
+
+            if (slot == preferredReturnSlot && preferredReturnSlotFov > 0.1f)
+                return preferredReturnSlotFov;
+
+            return 0f;
+        }
+
+        private static float ResolveSlotCurrentFov(CameraSlot slot)
+        {
+            if (slot == null)
+                return 0f;
+
+            try
+            {
+                float currentFov = slot.CurrentFov;
+                if (currentFov > 0.1f)
+                    return currentFov;
+            }
+            catch { }
+
+            try
+            {
+                if (slot.DefaultFov > 0.1f)
+                    return slot.DefaultFov;
+            }
+            catch { }
+
+            return 0f;
         }
 
         private void RegisterMissileSlot()

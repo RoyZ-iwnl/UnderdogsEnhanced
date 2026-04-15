@@ -39,7 +39,7 @@ namespace UnderdogsEnhanced
             if (!stab_t3485m.Value && !t3485m_optics.Value && !t3485m_lrf.Value) return;
 
 #if DEBUG
-            UnderdogsDebug.LogTiming($"[UE]   > 匹配 T-34-85M 改装 (stab={stab_t3485m.Value} optics={t3485m_optics.Value} lrf={t3485m_lrf.Value})");
+            UnderdogsDebug.LogTiming($"[TIMING]   > 匹配 T-34-85M 改装 (stab={stab_t3485m.Value} optics={t3485m_optics.Value} lrf={t3485m_lrf.Value})");
 #endif
 
             WeaponsManager wm = vic.GetComponent<WeaponsManager>();

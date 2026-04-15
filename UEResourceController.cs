@@ -12,19 +12,13 @@ using UnityEngine.UI;
 
 namespace UnderdogsEnhanced
 {
-    /// <summary>
-    /// 热成像颜色模式
-    /// </summary>
     public enum ThermalColorMode
     {
-        WhiteHot,   // 白热
-        BlackHot,   // 黑热
-        GreenHot    // 绿热
+        WhiteHot,
+        BlackHot,
+        GreenHot
     }
 
-    /// <summary>
-    /// 热成像配置
-    /// </summary>
     public sealed class ThermalConfig
     {
         public ThermalColorMode ColorMode = ThermalColorMode.GreenHot;
@@ -41,78 +35,77 @@ namespace UnderdogsEnhanced
 
     internal static class UEResourceController
     {
-        // 未来的资源模块应遵循此模式：
-        // 1. 在 Initialize() 中注册模块一次。
-        // 2. 在 LoadStaticAssets() 中放置资源包加载/预制件查找/不可变共享引用。
-        // 3. 在 LoadDynamicAssets() 中放置来自捐赠源的运行时引用或克隆的仅运行时对象。
-        // 4. 在 UnloadDynamicAssets() 中销毁仅运行时对象。
-        // 5. 保持 getter 无副作用：场景生命周期先加载，调用者仅消费结果。
-        private static readonly Dictionary<string, UEResourceModule> modules = new Dictionary<string, UEResourceModule>(StringComparer.OrdinalIgnoreCase);
-        private static readonly List<UEResourceModule> moduleLoadOrder = new List<UEResourceModule>();
-        private static bool initialized = false;
-        private static UESharedVanillaAssetsModule sharedVanillaAssets;
-        private static UEOpticsAssetsModule opticsAssets;
+        private const string SharedAssetsId = "SharedVanillaAssets";
+        private const string OpticsAssetsId = "OpticsAssets";
 
-        // 热成像渐变纹理缓存
+        private const string AbramsRangeCanvasPath = "Turret Scripts/GPS/Optic/Abrams GPS canvas";
+        private const string EmesBundleRelativePath = "UE/emes18";
+        private const string M60A3TtsPrefabName = "M60A3TTS";
+        private const string M60A3TtsFriendlyName = "M60A3 TTS";
+        private const string FlirPostPath = "Turret Scripts/Sights/FLIR/FLIR Post Processing - Green";
+        private const string FlirSlotPath = "Turret Scripts/Sights/FLIR";
+
+        private static bool initialized;
+        private static bool sharedDynamicAssetsLoaded;
+        private static bool opticsStaticAssetsLoaded;
+        private static bool opticsDynamicAssetsLoaded;
+
+        private static AssetBundle emes18Bundle;
+        private static Texture2D missileReticleTexture;
+        private static Sprite missileReticleSprite;
+        private static Texture2D whiteHotRampTexture;
+
+        internal static GameObject LimitedLrfRangeReadoutTemplate { get; private set; }
+        internal static GameObject Emes18MonitorPrefab { get; private set; }
+        internal static GameObject L1a5Prefab { get; private set; }
+        internal static GameObject ThermalFlirPostPrefab { get; private set; }
+        internal static Material ThermalFlirBlitMaterial { get; private set; }
+        internal static Material ThermalFlirBlitMaterialNoScan { get; private set; }
+        internal static Material ThermalFlirWhiteBlitMaterialNoScope { get; private set; }
+        internal static GameObject MissileReticleTemplate { get; private set; }
+
         private static readonly Dictionary<ThermalColorMode, Texture2D> thermalRampTextures = new Dictionary<ThermalColorMode, Texture2D>();
         public static ThermalConfig GlobalThermalConfig { get; private set; } = new ThermalConfig();
 
         internal static void Initialize()
         {
-            if (initialized) return;
+            if (initialized)
+                return;
 
-            sharedVanillaAssets = new UESharedVanillaAssetsModule();
-            opticsAssets = new UEOpticsAssetsModule();
-
-            RegisterModule(sharedVanillaAssets);
-            RegisterModule(opticsAssets);
             initialized = true;
         }
 
         internal static void LoadStaticAssets()
         {
             Initialize();
-
-            foreach (UEResourceModule module in moduleLoadOrder)
-            {
-                if (module != null && module.TryLoadStaticAssets())
-                    MelonLogger.Msg("UE static assets loaded from module: " + module.Id);
-            }
+            TryLoadStaticAssetsStep(ref opticsStaticAssetsLoaded, OpticsAssetsId, LoadOpticsStaticAssets);
         }
 
         internal static void LoadDynamicAssets()
         {
             Initialize();
-
-            foreach (UEResourceModule module in moduleLoadOrder)
-            {
-                if (module != null && module.TryLoadDynamicAssets())
-                    MelonLogger.Msg("UE dynamic assets loaded from module: " + module.Id);
-            }
+            TryLoadDynamicAssetsStep(ref sharedDynamicAssetsLoaded, SharedAssetsId, LoadSharedDynamicAssets);
+            TryLoadDynamicAssetsStep(ref opticsDynamicAssetsLoaded, OpticsAssetsId, LoadOpticsDynamicAssets);
         }
 
         internal static void UnloadDynamicAssets()
         {
             Initialize();
-
-            foreach (UEResourceModule module in moduleLoadOrder)
-            {
-                if (module != null && module.TryUnloadDynamicAssets())
-                    MelonLogger.Msg("UE dynamic assets unloaded from module: " + module.Id);
-            }
+            TryUnloadDynamicAssetsStep(ref sharedDynamicAssetsLoaded, SharedAssetsId, UnloadSharedDynamicAssets);
+            TryUnloadDynamicAssetsStep(ref opticsDynamicAssetsLoaded, OpticsAssetsId, UnloadOpticsDynamicAssets);
         }
 
         internal static void PrewarmCommonVanillaDonors()
         {
             Initialize();
-
             UEAssetUtil.PrewarmVanillaVehicle("MARDER1A2", new[] { "Marder1A1_rig/hull/turret/FLIR", "FLIR", "Marder1A1_rig/hull/turret/PERI Z11", "PERI Z11" });
         }
 
         internal static void PrewarmMenuVanillaDonors()
         {
             Initialize();
-
+            // 这个入口不能挂在“退战斗场景回主菜单”的场景加载钩子上。
+            // 其内部 donor 预热会走同步 Addressables 加载，只能在明确、安全的预加载时机使用。
             UEAssetUtil.PrewarmVanillaVehicle("MARDER1A2", new[] { "Marder1A1_rig/hull/turret/FLIR", "FLIR", "Marder1A1_rig/hull/turret/PERI Z11", "PERI Z11" });
             UEAssetUtil.PrewarmVanillaVehicle("M60A3TTS", new[] { "Turret Scripts/Sights/FLIR", "Turret Scripts/Sights/FLIR/FLIR Post Processing - Green" });
             UEAssetUtil.PrewarmVanillaVehicle("M1IP", new[] { "Turret Scripts/GPS/Optic/Abrams GPS canvas" });
@@ -123,9 +116,7 @@ namespace UnderdogsEnhanced
             Initialize();
 
             if (string.Equals(sceneName, "TR01_showcase", StringComparison.OrdinalIgnoreCase))
-            {
                 UEAssetUtil.PrewarmVanillaVehicle("MARDER1A2", new[] { "Marder1A1_rig/hull/turret/FLIR", "FLIR", "Marder1A1_rig/hull/turret/PERI Z11", "PERI Z11" });
-            }
         }
 
         internal static void ReleaseVanillaDonorAssets()
@@ -136,63 +127,55 @@ namespace UnderdogsEnhanced
 
         internal static GameObject GetLimitedLrfRangeReadoutTemplate()
         {
-            UESharedVanillaAssetsModule module = RequireDynamicModule(sharedVanillaAssets, "LimitedLrfRangeReadoutTemplate");
-            return module != null ? module.LimitedLrfRangeReadoutTemplate : null;
+            return RequireSharedDynamicAsset(nameof(LimitedLrfRangeReadoutTemplate)) ? LimitedLrfRangeReadoutTemplate : null;
         }
 
         internal static GameObject GetEmes18MonitorPrefab()
         {
-            UEOpticsAssetsModule module = RequireStaticModule(opticsAssets, "Emes18MonitorPrefab");
-            return module != null ? module.Emes18MonitorPrefab : null;
+            return RequireOpticsStaticAsset(nameof(Emes18MonitorPrefab)) ? Emes18MonitorPrefab : null;
         }
 
         internal static GameObject GetL1a5Prefab()
         {
-            UEOpticsAssetsModule module = RequireStaticModule(opticsAssets, "L1a5Prefab");
-            return module != null ? module.L1a5Prefab : null;
+            return RequireOpticsStaticAsset(nameof(L1a5Prefab)) ? L1a5Prefab : null;
         }
 
         internal static GameObject GetThermalFlirPostPrefab()
         {
-            UEOpticsAssetsModule module = RequireDynamicModule(opticsAssets, "ThermalFlirPostPrefab");
-            return module != null ? module.ThermalFlirPostPrefab : null;
+            return RequireOpticsDynamicAsset(nameof(ThermalFlirPostPrefab)) ? ThermalFlirPostPrefab : null;
         }
 
         internal static Material GetThermalFlirBlitMaterial()
         {
-            UEOpticsAssetsModule module = RequireDynamicModule(opticsAssets, "ThermalFlirBlitMaterial");
-            return module != null ? module.ThermalFlirBlitMaterial : null;
+            return RequireOpticsDynamicAsset(nameof(ThermalFlirBlitMaterial)) ? ThermalFlirBlitMaterial : null;
         }
 
         internal static Material GetThermalFlirBlitMaterialNoScan()
         {
-            UEOpticsAssetsModule module = RequireDynamicModule(opticsAssets, "ThermalFlirBlitMaterialNoScan");
-            return module != null ? module.ThermalFlirBlitMaterialNoScan : null;
+            return RequireOpticsDynamicAsset(nameof(ThermalFlirBlitMaterialNoScan)) ? ThermalFlirBlitMaterialNoScan : null;
         }
 
         internal static Material GetThermalFlirWhiteBlitMaterialNoScope()
         {
-            UEOpticsAssetsModule module = RequireDynamicModule(opticsAssets, "ThermalFlirWhiteBlitMaterialNoScope");
-            return module != null ? module.ThermalFlirWhiteBlitMaterialNoScope : null;
+            return RequireOpticsDynamicAsset(nameof(ThermalFlirWhiteBlitMaterialNoScope)) ? ThermalFlirWhiteBlitMaterialNoScope : null;
         }
 
         internal static GameObject GetMissileReticleTemplate()
         {
-            UEOpticsAssetsModule module = RequireDynamicModule(opticsAssets, "MissileReticleTemplate");
-            return module != null ? module.MissileReticleTemplate : null;
+            return RequireOpticsDynamicAsset(nameof(MissileReticleTemplate)) ? MissileReticleTemplate : null;
         }
 
         internal static GameObject CreateMissileReticleInstance()
         {
-            UEOpticsAssetsModule module = RequireDynamicModule(opticsAssets, "MissileReticleTemplate");
-            return module != null ? module.CreateMissileReticleInstance() : null;
+            return RequireOpticsDynamicAsset(nameof(MissileReticleTemplate))
+                ? UEAssetUtil.CloneInactive(MissileReticleTemplate, "MissileReticleCanvas")
+                : null;
         }
-
-        #region Thermal Vision
 
         public static void InitThermalRampTextures()
         {
-            if (thermalRampTextures.Count > 0) return;
+            if (thermalRampTextures.Count > 0)
+                return;
 
             thermalRampTextures[ThermalColorMode.WhiteHot] = CreateRampTexture(new Color(0f, 0f, 0f, 1f), new Color(1f, 1f, 1f, 1f));
             thermalRampTextures[ThermalColorMode.BlackHot] = CreateRampTexture(new Color(1f, 1f, 1f, 1f), new Color(0f, 0f, 0f, 1f));
@@ -202,24 +185,28 @@ namespace UnderdogsEnhanced
         public static Texture2D GetThermalRampTexture(ThermalColorMode mode)
         {
             InitThermalRampTextures();
-            return thermalRampTextures.TryGetValue(mode, out var tex) ? tex : null;
+            return thermalRampTextures.TryGetValue(mode, out Texture2D tex) ? tex : null;
         }
 
         public static void UpdateGlobalThermalConfig(ThermalConfig config)
         {
-            if (config == null) return;
+            if (config == null)
+                return;
+
             GlobalThermalConfig = config.Clone();
         }
 
         public static Material CreateThermalMaterial(Material sourceMaterial, ThermalConfig config = null)
         {
-            if (sourceMaterial == null) return null;
+            if (sourceMaterial == null)
+                return null;
 
-            var cfg = config ?? GlobalThermalConfig;
+            ThermalConfig cfg = config ?? GlobalThermalConfig;
             InitThermalRampTextures();
 
             Shader blitShader = Shader.Find("Blit (FLIR)/Blit Simple");
-            if (blitShader == null) return null;
+            if (blitShader == null)
+                return null;
 
             Material material = new Material(blitShader);
             material.CopyPropertiesFromMaterial(sourceMaterial);
@@ -237,16 +224,17 @@ namespace UnderdogsEnhanced
             material.EnableKeyword("_TONEMAP");
             material.EnableKeyword("_FLIR_POLARITY");
             material.hideFlags = HideFlags.DontUnloadUnusedAsset;
-
             return material;
         }
 
         public static void ApplyThermalToCameraSlot(CameraSlot slot, ThermalConfig config = null)
         {
-            if (slot == null) return;
+            if (slot == null)
+                return;
 
             Material sourceMat = GetThermalFlirBlitMaterial();
-            if (sourceMat == null) return;
+            if (sourceMat == null)
+                return;
 
             Material newMaterial = CreateThermalMaterial(sourceMat, config ?? GlobalThermalConfig);
             if (newMaterial != null)
@@ -264,77 +252,67 @@ namespace UnderdogsEnhanced
             }
         }
 
-        private static Texture2D CreateRampTexture(Color cold, Color hot, int width = 256)
+        private static bool TryLoadStaticAssetsStep(ref bool loaded, string id, Action loadAction)
         {
-            Texture2D tex = new Texture2D(width, 1, TextureFormat.ARGB32, false, true);
-            Color[] colors = new Color[width];
+            if (loaded)
+                return false;
 
-            for (int i = 0; i < width; i++)
+            try
             {
-                float t = i / (float)(width - 1);
-                colors[i] = Color.Lerp(cold, hot, t);
+                loadAction();
+                loaded = true;
+                MelonLogger.Msg("UE static assets loaded from module: " + id);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"[Assets] Static resource load failed: {id} | {ex}");
+                return false;
+            }
+        }
+
+        private static bool TryLoadDynamicAssetsStep(ref bool loaded, string id, Action loadAction)
+        {
+            if (loaded)
+                return false;
+
+            try
+            {
+                loadAction();
+                loaded = true;
+                MelonLogger.Msg("UE dynamic assets loaded from module: " + id);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"[Assets] Dynamic resource load failed: {id} | {ex}");
+                return false;
+            }
+        }
+
+        private static bool TryUnloadDynamicAssetsStep(ref bool loaded, string id, Action unloadAction)
+        {
+            if (!loaded)
+                return false;
+
+            try
+            {
+                unloadAction();
+                MelonLogger.Msg("UE dynamic assets unloaded from module: " + id);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"[Assets] Dynamic resource unload failed: {id} | {ex}");
+            }
+            finally
+            {
+                loaded = false;
             }
 
-            tex.SetPixels(colors);
-            tex.wrapMode = TextureWrapMode.Clamp;
-            tex.filterMode = FilterMode.Bilinear;
-            tex.Apply();
-            tex.hideFlags = HideFlags.DontUnloadUnusedAsset;
-
-            return tex;
+            return true;
         }
 
-        #endregion
-
-        private static void RegisterModule(UEResourceModule module)
-        {
-            if (module == null || string.IsNullOrEmpty(module.Id))
-                return;
-
-            if (!modules.ContainsKey(module.Id))
-                moduleLoadOrder.Add(module);
-
-            modules[module.Id] = module;
-        }
-
-        private static T RequireStaticModule<T>(T module, string assetName) where T : UEResourceModule
-        {
-            return RequireModule(module, assetName, requireDynamicAssets: false);
-        }
-
-        private static T RequireDynamicModule<T>(T module, string assetName) where T : UEResourceModule
-        {
-            return RequireModule(module, assetName, requireDynamicAssets: true);
-        }
-
-        private static T RequireModule<T>(T module, string assetName, bool requireDynamicAssets) where T : UEResourceModule
-        {
-            Initialize();
-
-            if (module == null)
-                return null;
-
-            bool ready = requireDynamicAssets ? module.DynamicAssetsLoaded : module.StaticAssetsLoaded;
-            if (ready)
-                return module;
-
-            string phase = requireDynamicAssets ? "dynamic" : "static";
-            MelonLogger.Warning($"[Assets] Requested {phase} asset before module load: {module.Id}.{assetName}");
-            return null;
-        }
-    }
-
-    internal sealed class UESharedVanillaAssetsModule : UEResourceModule
-    {
-        private const string AbramsRangeCanvasPath = "Turret Scripts/GPS/Optic/Abrams GPS canvas";
-
-        internal GameObject LimitedLrfRangeReadoutTemplate { get; private set; }
-
-        internal UESharedVanillaAssetsModule() : base("SharedVanillaAssets")
-        {
-        }
-
-        protected override void LoadDynamicAssets()
+        private static void LoadSharedDynamicAssets()
         {
             Vehicle m1ip = UEAssetUtil.LoadVanillaVehicle("M1IP");
             if (m1ip == null)
@@ -366,10 +344,9 @@ namespace UnderdogsEnhanced
                 text.outlineWidth = 0.2f;
                 text.text = string.Empty;
             }
-
         }
 
-        protected override void UnloadDynamicAssets()
+        private static void UnloadSharedDynamicAssets()
         {
             if (LimitedLrfRangeReadoutTemplate != null)
             {
@@ -377,39 +354,11 @@ namespace UnderdogsEnhanced
                 LimitedLrfRangeReadoutTemplate = null;
             }
         }
-    }
 
-    internal sealed class UEOpticsAssetsModule : UEResourceModule
-    {
-        private const string EmesBundleRelativePath = "UE/emes18";
-        private const string M60A3TtsPrefabName = "M60A3TTS";
-        private const string M60A3TtsFriendlyName = "M60A3 TTS";
-        private const string FlirPostPath = "Turret Scripts/Sights/FLIR/FLIR Post Processing - Green";
-        private const string FlirSlotPath = "Turret Scripts/Sights/FLIR";
-
-        private AssetBundle emes18Bundle;
-        private Texture2D missileReticleTexture;
-        private Sprite missileReticleSprite;
-
-        // 当前 EMES18 运行时链路中，这个 prefab 仅作为 thermal UI-only donor 使用。
-        // 准星本体仍由原生 ReticleMesh/thermal donor 提供。
-        internal GameObject Emes18MonitorPrefab { get; private set; }
-        internal GameObject L1a5Prefab { get; private set; }
-        internal GameObject ThermalFlirPostPrefab { get; private set; }
-        internal Material ThermalFlirBlitMaterial { get; private set; }
-        internal Material ThermalFlirBlitMaterialNoScan { get; private set; }
-        internal Material ThermalFlirWhiteBlitMaterialNoScope { get; private set; }
-        internal GameObject MissileReticleTemplate { get; private set; }
-
-        private Texture2D whiteHotRampTexture;
-
-        internal UEOpticsAssetsModule() : base("OpticsAssets")
+        private static void LoadOpticsStaticAssets()
         {
-        }
-
-        protected override void LoadStaticAssets()
-        {
-            if (Emes18MonitorPrefab != null) return;
+            if (Emes18MonitorPrefab != null)
+                return;
 
             string bundlePath = Path.Combine(MelonEnvironment.ModsDirectory, EmesBundleRelativePath);
             if (emes18Bundle == null)
@@ -421,29 +370,24 @@ namespace UnderdogsEnhanced
             if (emes18Bundle == null)
                 throw new FileNotFoundException($"EMES18 bundle load failed: {bundlePath}");
 
-            // 加载 EMES18 预制件（光学系统用）
             Emes18MonitorPrefab = emes18Bundle.LoadAsset<GameObject>("EMES18");
             if (Emes18MonitorPrefab == null)
                 throw new InvalidOperationException("EMES18 prefab not found in bundle.");
 
             Emes18MonitorPrefab.hideFlags = HideFlags.DontUnloadUnusedAsset;
 
-            // 加载 L1A5 预制件（模型用，同一bundle中的另一个根节点）
             L1a5Prefab = emes18Bundle.LoadAsset<GameObject>("L1A5");
             if (L1a5Prefab == null)
-                MelonLogger.Warning("[UE][Assets] L1A5 prefab not found in bundle, falling back to EMES18");
+                MelonLogger.Warning("[TIMING][Assets] L1A5 prefab not found in bundle, falling back to EMES18");
 
             if (L1a5Prefab == null)
-                L1a5Prefab = Emes18MonitorPrefab; // fallback
+                L1a5Prefab = Emes18MonitorPrefab;
 
             if (L1a5Prefab != null)
-            {
                 L1a5Prefab.hideFlags = HideFlags.DontUnloadUnusedAsset;
-            }
-
         }
 
-        protected override void LoadDynamicAssets()
+        private static void LoadOpticsDynamicAssets()
         {
             Vehicle m60a3 = LoadM60A3TtsVehicle();
             if (m60a3 == null)
@@ -466,7 +410,7 @@ namespace UnderdogsEnhanced
             MissileReticleTemplate = BuildMissileReticleTemplate();
         }
 
-        protected override void UnloadDynamicAssets()
+        private static void UnloadOpticsDynamicAssets()
         {
             ThermalFlirPostPrefab = null;
             ThermalFlirBlitMaterial = null;
@@ -508,32 +452,64 @@ namespace UnderdogsEnhanced
             }
         }
 
-        internal GameObject CreateMissileReticleInstance()
+        private static bool RequireSharedDynamicAsset(string assetName)
         {
-            return UEAssetUtil.CloneInactive(MissileReticleTemplate, "MissileReticleCanvas");
+            return RequireAssetsLoaded(SharedAssetsId, assetName, sharedDynamicAssetsLoaded, true);
+        }
+
+        private static bool RequireOpticsStaticAsset(string assetName)
+        {
+            return RequireAssetsLoaded(OpticsAssetsId, assetName, opticsStaticAssetsLoaded, false);
+        }
+
+        private static bool RequireOpticsDynamicAsset(string assetName)
+        {
+            return RequireAssetsLoaded(OpticsAssetsId, assetName, opticsDynamicAssetsLoaded, true);
+        }
+
+        private static bool RequireAssetsLoaded(string id, string assetName, bool ready, bool dynamic)
+        {
+            Initialize();
+
+            if (ready)
+                return true;
+
+            string phase = dynamic ? "dynamic" : "static";
+            MelonLogger.Warning($"[Assets] Requested {phase} asset before module load: {id}.{assetName}");
+            return false;
+        }
+
+        private static Texture2D CreateRampTexture(Color cold, Color hot, int width = 256)
+        {
+            Texture2D tex = new Texture2D(width, 1, TextureFormat.ARGB32, false, true);
+            Color[] colors = new Color[width];
+
+            for (int i = 0; i < width; i++)
+            {
+                float t = i / (float)(width - 1);
+                colors[i] = Color.Lerp(cold, hot, t);
+            }
+
+            tex.SetPixels(colors);
+            tex.wrapMode = TextureWrapMode.Clamp;
+            tex.filterMode = FilterMode.Bilinear;
+            tex.Apply();
+            tex.hideFlags = HideFlags.DontUnloadUnusedAsset;
+            return tex;
         }
 
         private static AssetBundle FindLoadedBundle(string expectedPath)
         {
-            try
+            string normalizedExpected = expectedPath.Replace('\\', '/').ToLowerInvariant();
+            foreach (AssetBundle bundle in AssetBundle.GetAllLoadedAssetBundles())
             {
-                string normalizedExpected = expectedPath.Replace('\\', '/').ToLowerInvariant();
-                foreach (var bundle in AssetBundle.GetAllLoadedAssetBundles())
-                {
-                    if (bundle == null) continue;
-                    string name = null;
-                    try { name = bundle.name; } catch { }
-                    if (string.IsNullOrWhiteSpace(name)) continue;
+                if (bundle == null)
+                    continue;
 
-                    string normalizedName = name.Replace('\\', '/').ToLowerInvariant();
-                    if (normalizedName == normalizedExpected ||
-                        normalizedName.EndsWith("/emes18", StringComparison.Ordinal) ||
-                        normalizedName.EndsWith("/emes18.unity3d", StringComparison.Ordinal) ||
-                        normalizedName.Contains("/ue/emes18"))
-                        return bundle;
-                }
+                string name = bundle.name?.Replace('\\', '/').ToLowerInvariant();
+                if (name == normalizedExpected)
+                    return bundle;
             }
-            catch { }
 
             return null;
         }
@@ -541,10 +517,12 @@ namespace UnderdogsEnhanced
         private static Vehicle LoadM60A3TtsVehicle()
         {
             Vehicle donor = UEAssetUtil.LoadVanillaVehicle(M60A3TtsPrefabName);
-            if (donor != null) return donor;
+            if (donor != null)
+                return donor;
 
             donor = UEAssetUtil.LoadVanillaVehicle(M60A3TtsFriendlyName);
-            if (donor != null) return donor;
+            if (donor != null)
+                return donor;
 
             return Resources.FindObjectsOfTypeAll<Vehicle>().FirstOrDefault(v =>
                 v != null &&
@@ -556,7 +534,8 @@ namespace UnderdogsEnhanced
         private static Material CreateNoScanFlirMaterial(Material source)
         {
             Shader blitShader = Shader.Find("Blit (FLIR)/Blit Simple");
-            if (blitShader == null) return null;
+            if (blitShader == null)
+                return null;
 
             Material material = new Material(blitShader);
             material.CopyPropertiesFromMaterial(source);
@@ -568,7 +547,8 @@ namespace UnderdogsEnhanced
         private static Material CreateWhiteNoScopeFlirMaterial(Material source, ref Texture2D rampTexture)
         {
             Shader blitShader = Shader.Find("Blit (FLIR)/Blit Simple");
-            if (blitShader == null || source == null) return null;
+            if (blitShader == null || source == null)
+                return null;
 
             if (rampTexture == null)
                 rampTexture = CreateWhiteHotRampTexture();
@@ -599,9 +579,9 @@ namespace UnderdogsEnhanced
             return texture;
         }
 
-        private GameObject BuildMissileReticleTemplate()
+        private static GameObject BuildMissileReticleTemplate()
         {
-            var go = new GameObject("MissileReticleCanvas");
+            GameObject go = new GameObject("MissileReticleCanvas");
             go.hideFlags = HideFlags.DontUnloadUnusedAsset;
 
             Canvas canvas = go.AddComponent<Canvas>();
@@ -621,7 +601,7 @@ namespace UnderdogsEnhanced
             return go;
         }
 
-        private void CreateMissileReticleUi(Transform parent)
+        private static void CreateMissileReticleUi(Transform parent)
         {
             GameObject reticleObject = new GameObject("Reticle");
             RectTransform reticleRect = reticleObject.AddComponent<RectTransform>();
@@ -659,7 +639,7 @@ namespace UnderdogsEnhanced
             circleImage.color = new Color(0f, 0.6f, 0f, 0.8f);
         }
 
-        private Sprite CreateMissileReticleSprite(float radius, float thickness)
+        private static Sprite CreateMissileReticleSprite(float radius, float thickness)
         {
             if (missileReticleSprite != null)
                 return missileReticleSprite;
@@ -677,7 +657,7 @@ namespace UnderdogsEnhanced
                 for (int x = 0; x < size; x++)
                 {
                     float distance = Vector2.Distance(new Vector2(x, y), center);
-                    colors[y * size + x] = (distance <= outerRadius && distance >= innerRadius) ? Color.white : Color.clear;
+                    colors[y * size + x] = distance <= outerRadius && distance >= innerRadius ? Color.white : Color.clear;
                 }
             }
 

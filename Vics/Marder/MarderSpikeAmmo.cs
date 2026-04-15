@@ -16,22 +16,31 @@ namespace UnderdogsEnhanced
             "MILAN"
         };
 
+        // 多管发射参数
+        private const int SPIKE_CLIP_CAPACITY = 2;          // 待发导弹数量
+        private const float SPIKE_RELOAD_TIME = 30f;        // 填装时间(秒)
+
         internal static AmmoType OriginalAmmo { get; private set; }
         internal static AmmoType SpikeAmmo { get; private set; }
-
+        /// <summary>
+        /// lr1: 260速 1000破 1.31当量 14kg重
+        /// lr2: 180速 900破 1.27当量 13.5重
+        /// </summary>
         private static AmmoType.AmmoClip spikeClip;
         private static AmmoCodexScriptable spikeCodex;
         private static AmmoClipCodexScriptable spikeClipCodex;
-        private const float SpikeMaximumRange = 20000f;
-        private const float SpikeTurnSpeed = 0.2f;
-        private const float SpikeNoisePower = 2f;
-        private const float SpikeNoiseTimeScale = 2f;
-        private const float SpikeSpiralPower = 2.5f;
-        private const float SpikeSpiralAngularRate = 1500f;
-        private const float SpikeMuzzleVelocity = 120f;
-        private const float SpikeRangedFuseTime = 500f;
-        private const float SpikePenetration = 850f;
-        private const float SpikeTntEquivalent = 1.7f;
+        private static WeaponSystemCodexScriptable spikeWeaponCodex;  // 武器定义
+        private const float SpikeMaximumRange = 20000f;//最大距离
+        private const float SpikeTurnSpeed = 0.2f;//转向速度（越大越灵活，但过大会导致过度修正和失速）
+        private const float SpikeNoisePower = 2f;//噪声强度（增加弹道随机性，降低被动引导系统的命中率，但过大会导致过度偏离目标）
+        private const float SpikeNoiseTimeScale = 2f;//噪声时间缩放（控制弹道随机变化的频率，较低值会产生更平滑的偏移，较高值会产生更频繁的偏移）
+        private const float SpikeSpiralPower = 2.5f;//螺旋强度（增加弹道的螺旋运动，增加命中不确定性，但过大会导致过度偏离目标）
+        private const float SpikeSpiralAngularRate = 1500f;//螺旋角速度（控制弹道螺旋运动的速度，较低值会产生更宽松的螺旋，较高值会产生更紧密的螺旋）
+        private const float SpikeMuzzleVelocity = 180f;//发射速度（增加初始速度可以提高命中率和穿透力，但过大会导致过度修正和失速）
+        private const float SpikeRangedFuseTime = 500f;//引信时间（增加引信时间可以允许导弹在更远距离引爆，但过大会导致近距离失效）
+        private const float SpikePenetration = 900f;//破甲深度
+        private const float SpikeTntEquivalent = 1.27f;//当量(kg TNT)
+        private const float SpikeMass = 14f;// 导弹质量(kg)
 
         internal static bool IsSpikeAmmo(AmmoType ammo)
         {
@@ -95,12 +104,24 @@ namespace UnderdogsEnhanced
                 }
 
                 if (MarderMain.marder_spike_ready_count != null && MarderMain.marder_spike_ready_count.Value >= 0)
-                    desiredStoredClips = Mathf.Clamp(MarderMain.marder_spike_ready_count.Value, 0, 64);
+                {
+                    // 用户设置的是导弹数量，需要转换成 clip 数量（向上取整）
+                    int missileCount = Mathf.Clamp(MarderMain.marder_spike_ready_count.Value, 0, 64);
+                    desiredStoredClips = Mathf.CeilToInt((float)missileCount / SPIKE_CLIP_CAPACITY);
+                }
 
                 int preloadClipCount = desiredStoredClips + 1;
 
                 UECommonUtil.ReplaceReadyRack(rack, spikeClip, preloadClipCount);
                 UECommonUtil.RefreshLauncherFeed(weaponSystem.Feed);
+
+                // 修改武器名称
+                if (spikeWeaponCodex != null)
+                    weaponSystem.CodexEntry = spikeWeaponCodex;
+
+                // 多管发射参数设置
+                ApplyMultiBarrelSettings(weaponSystem);
+
                 ApplyDebugFriendlyParams();
             }
             catch (Exception ex)
@@ -150,6 +171,7 @@ namespace UnderdogsEnhanced
             SpikeAmmo.MuzzleVelocity = Mathf.Max(original.MuzzleVelocity, SpikeMuzzleVelocity);
             SpikeAmmo.RhaPenetration = Mathf.Max(original.RhaPenetration, SpikePenetration);
             SpikeAmmo.TntEquivalentKg = Mathf.Max(original.TntEquivalentKg, SpikeTntEquivalent);
+            SpikeAmmo.Mass = SpikeMass;
             SpikeAmmo.Tandem = true;
             SpikeAmmo.UseErrorCorrection = true;
             SpikeAmmo.GuidanceLeadDistance = 0f;
@@ -166,11 +188,17 @@ namespace UnderdogsEnhanced
             spikeClip = new AmmoType.AmmoClip();
             UECommonUtil.ShallowCopy(spikeClip, originalClip);
             spikeClip.Name = MISSILE_NAME;
+            spikeClip.Capacity = SPIKE_CLIP_CAPACITY;  // 待发导弹数量
             spikeClip.MinimalPattern = new AmmoCodexScriptable[] { spikeCodex };
 
             spikeClipCodex = ScriptableObject.CreateInstance<AmmoClipCodexScriptable>();
             spikeClipCodex.ClipType = spikeClip;
             spikeClipCodex.name = "clip_spike_lr";
+
+            // 创建武器定义（只改名称）
+            spikeWeaponCodex = ScriptableObject.CreateInstance<WeaponSystemCodexScriptable>();
+            spikeWeaponCodex.name = "weapon_spike_vmls";
+            spikeWeaponCodex.FriendlyName = "SPIKE VMLS";  // 新武器名称
 
 #if DEBUG
             MelonLogger.Msg($"[Marder Spike] Init complete from {original.Name}");
@@ -221,6 +249,45 @@ namespace UnderdogsEnhanced
             SpikeAmmo.MuzzleVelocity = Mathf.Max(OriginalAmmo.MuzzleVelocity, SpikeMuzzleVelocity);
             SpikeAmmo.RhaPenetration = Mathf.Max(OriginalAmmo.RhaPenetration, SpikePenetration);
             SpikeAmmo.TntEquivalentKg = Mathf.Max(OriginalAmmo.TntEquivalentKg, SpikeTntEquivalent);
+            SpikeAmmo.Mass = SpikeMass;
+        }
+
+        /// <summary>
+        /// 应用多管发射和填装时间设置
+        /// </summary>
+        private static void ApplyMultiBarrelSettings(WeaponSystem weaponSystem)
+        {
+            if (weaponSystem?.Feed == null) return;
+
+            // 设置不能在引导导弹时发射
+            weaponSystem.FireWhileGuidingMissile = false;
+
+            AmmoFeed feed = weaponSystem.Feed;
+
+            // 设置单发循环时间（发射后到下一发可用的时间）
+            if (feed.RoundCycleStages != null && feed.RoundCycleStages.Length > 0)
+            {
+                feed.RoundCycleStages[0].Duration = SPIKE_RELOAD_TIME;
+            }
+
+            // 设置填装阶段（每个阶段 = 总时间 / clip容量）
+            if (feed.ClipReloadStages != null && feed.ClipReloadStages.Length > 0)
+            {
+                float stageDuration = SPIKE_RELOAD_TIME / SPIKE_CLIP_CAPACITY;
+                AmmoFeed.ReloadStage template = feed.ClipReloadStages[0];
+
+                AmmoFeed.ReloadStage[] newStages = new AmmoFeed.ReloadStage[SPIKE_CLIP_CAPACITY];
+                for (int i = 0; i < SPIKE_CLIP_CAPACITY; i++)
+                {
+                    newStages[i] = new AmmoFeed.ReloadStage();
+                    UECommonUtil.ShallowCopy(newStages[i], template);
+                    newStages[i].Duration = stageDuration;
+                }
+                feed.ClipReloadStages = newStages;
+            }
+
+            // 设置总填装时间
+            feed._totalReloadTime = SPIKE_RELOAD_TIME;
         }
 
     }

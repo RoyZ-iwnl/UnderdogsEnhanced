@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
@@ -272,6 +272,7 @@ namespace UnderdogsEnhanced
 
         #region VehicleInfo Helpers
 
+#pragma warning disable CS0612
         public static VehicleInfo GetPlayerVehicleInfo(object playerUnit)
         {
             var localVehicleInfo = GetVehicleInfo(playerUnit) as VehicleInfo;
@@ -286,6 +287,7 @@ namespace UnderdogsEnhanced
 
             return null;
         }
+#pragma warning restore CS0612
 
         public static object GetVehicleInfo(object playerUnit)
         {

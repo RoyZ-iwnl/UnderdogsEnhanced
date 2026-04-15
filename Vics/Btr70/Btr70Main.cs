@@ -43,7 +43,7 @@ namespace UnderdogsEnhanced
             if (!stab_btr70.Value && !btr70_lrf.Value) return;
 
 #if DEBUG
-            UnderdogsDebug.LogTiming($"[UE]   > 匹配 BTR-70 改装 (stab={stab_btr70.Value} lrf={btr70_lrf.Value})");
+            UnderdogsDebug.LogTiming($"[TIMING]   > 匹配 BTR-70 改装 (stab={stab_btr70.Value} lrf={btr70_lrf.Value})");
 #endif
 
             WeaponsManager weapons_manager = vic.GetComponent<WeaponsManager>();

@@ -34,7 +34,7 @@ namespace UnderdogsEnhanced
             if (stab_t64_nsvt.Value)
             {
 #if DEBUG
-                UnderdogsDebug.LogTiming($"[UE]   > 匹配 T-64 NSVT稳定改装");
+                UnderdogsDebug.LogTiming($"[TIMING]   > 匹配 T-64 NSVT稳定改装");
 #endif
                 AimablePlatform[] aimables = vic.AimablePlatforms;
                 FieldInfo stab_mode = typeof(AimablePlatform).GetField("_stabMode", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -60,7 +60,7 @@ namespace UnderdogsEnhanced
             if (t64_nsvt_optics.Value)
             {
 #if DEBUG
-                UnderdogsDebug.LogTiming($"[UE]   > 匹配 T-64 NSVT瞄具改装");
+                UnderdogsDebug.LogTiming($"[TIMING]   > 匹配 T-64 NSVT瞄具改装");
 #endif
                 CameraSlot cws_sight = vic.gameObject.transform.Find("---T64A_MESH---/HULL/TURRET/TC ring/TC AA sight/CWS gunsight")?.GetComponent<CameraSlot>();
                 if (cws_sight != null)

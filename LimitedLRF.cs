@@ -13,6 +13,19 @@ using System.Collections.Generic;
 
 namespace UnderdogsEnhanced
 {
+    /// <summary>
+    /// LRF 模块日志辅助
+    /// </summary>
+    internal static class LRFDebugLogger
+    {
+        internal static void LogError(string context, Exception ex)
+        {
+#if DEBUG
+            MelonLogger.Warning($"[TIMING][LRF] {context}: {ex.Message}");
+#endif
+        }
+    }
+
     public class ForceLaseCompat : MonoBehaviour { }
 
     public static class ForceLaseCompatUtil
@@ -105,28 +118,39 @@ namespace UnderdogsEnhanced
             if (measured <= 0f) return;
 
             measured = MathUtil.RoundFloatToMultipleOf(measured, 50);
-            try { f_fcs_reportedRange?.SetValue(fcs, measured); } catch { }
-            try { fcs.TargetRange = measured; } catch { }
-            try { fcs.RangeInvalid = false; } catch { }
+            try { f_fcs_reportedRange?.SetValue(fcs, measured); }
+            catch (Exception ex) { LRFDebugLogger.LogError("ReportedRange", ex); }
+            try { fcs.TargetRange = measured; }
+            catch (Exception ex) { LRFDebugLogger.LogError("TargetRange", ex); }
+            try { fcs.RangeInvalid = false; }
+            catch (Exception ex) { LRFDebugLogger.LogError("RangeInvalid", ex); }
 
-            try { fcs.SetManualMode(true); } catch { }
-            try { fcs.SetRange(measured, true); } catch { }
-            try { fcs.NotifyManualRangeAdjust(); } catch { }
-            try { fcs.UpdateRange(); } catch { }
+            try { fcs.SetManualMode(true); }
+            catch (Exception ex) { LRFDebugLogger.LogError("SetManualMode", ex); }
+            try { fcs.SetRange(measured, true); }
+            catch (Exception ex) { LRFDebugLogger.LogError("SetRange", ex); }
+            try { fcs.NotifyManualRangeAdjust(); }
+            catch (Exception ex) { LRFDebugLogger.LogError("NotifyManualRangeAdjust", ex); }
+            try { fcs.UpdateRange(); }
+            catch (Exception ex) { LRFDebugLogger.LogError("UpdateRange", ex); }
 
             float currentAfter = 0f;
-            try { currentAfter = fcs.CurrentRange; } catch { }
+            try { currentAfter = fcs.CurrentRange; }
+            catch (Exception ex) { LRFDebugLogger.LogError("CurrentRange", ex); }
             if (currentAfter <= 0f || Mathf.Abs(currentAfter - measured) > 1f)
             {
-                try { f_fcs_currentRange?.SetValue(fcs, measured); } catch { }
-                try { f_fcs_targetRange?.SetValue(fcs, measured); } catch { }
-                try { f_fcs_rangeMoving?.SetValue(fcs, false); } catch { }
+                try { f_fcs_currentRange?.SetValue(fcs, measured); }
+                catch (Exception ex) { LRFDebugLogger.LogError("_currentRange", ex); }
+                try { f_fcs_targetRange?.SetValue(fcs, measured); }
+                catch (Exception ex) { LRFDebugLogger.LogError("_targetRange", ex); }
+                try { f_fcs_rangeMoving?.SetValue(fcs, false); }
+                catch (Exception ex) { LRFDebugLogger.LogError("_rangeMoving", ex); }
                 try
                 {
                     var cb = f_fcs_rangeChanged?.GetValue(fcs) as Action<float>;
                     cb?.Invoke(measured);
                 }
-                catch { }
+                catch (Exception ex) { LRFDebugLogger.LogError("RangeChanged callback", ex); }
             }
 
             try
@@ -140,7 +164,8 @@ namespace UnderdogsEnhanced
                     seen.Add(optic);
                     if (optic.FCS != fcs) continue;
 
-                    try { m_uo_fcsRangeChanged?.Invoke(optic, new object[] { measured }); } catch { }
+                    try { m_uo_fcsRangeChanged?.Invoke(optic, new object[] { measured }); }
+                    catch (Exception ex) { LRFDebugLogger.LogError("FCS_RangeChanged", ex); }
                     try
                     {
                         if (optic.RangeText != null)
@@ -155,10 +180,10 @@ namespace UnderdogsEnhanced
                             optic.RangeText.text = (optic.RangeTextPrefix ?? "") + body + (optic.RangeTextSuffix ?? "");
                         }
                     }
-                    catch { }
+                    catch (Exception ex) { LRFDebugLogger.LogError("RangeText update", ex); }
                 }
             }
-            catch { }
+            catch (Exception ex) { LRFDebugLogger.LogError("Optic enumeration", ex); }
         }
     }
 
@@ -232,7 +257,7 @@ namespace UnderdogsEnhanced
             {
                 manualHit = ForceLaseCompatUtil.TryMeasureRangeIgnoringSelf(__instance, out measured);
             }
-            catch { }
+            catch (Exception ex) { LRFDebugLogger.LogError("TryMeasureRange", ex); }
 
             if (!manualHit)
             {
@@ -240,7 +265,7 @@ namespace UnderdogsEnhanced
                 {
                     __instance.DoLase();
                 }
-                catch { }
+                catch (Exception ex) { LRFDebugLogger.LogError("DoLase", ex); }
             }
 
             ForceLaseCompatUtil.PushRangeToFcsDisplay(__instance, measured);
@@ -266,7 +291,7 @@ namespace UnderdogsEnhanced
             {
                 manualHit = ForceLaseCompatUtil.TryMeasureRangeIgnoringSelf(fcs, out measured);
             }
-            catch { }
+            catch (Exception ex) { LRFDebugLogger.LogError("TryMeasureRange", ex); }
 
             if (!manualHit)
             {
@@ -274,7 +299,7 @@ namespace UnderdogsEnhanced
                 {
                     fcs.DoLase();
                 }
-                catch { }
+                catch (Exception ex) { LRFDebugLogger.LogError("DoLase", ex); }
             }
 
             ForceLaseCompatUtil.PushRangeToFcsDisplay(fcs, measured);
@@ -303,42 +328,45 @@ namespace UnderdogsEnhanced
         {
             if (fcs == null || dayOptic == null) return;
 
-            try { dayOptic.FCS = fcs; } catch { }
+            try { dayOptic.FCS = fcs; }
+            catch (Exception ex) { LRFDebugLogger.LogError("FCS assignment", ex); }
             if (!forceLaseCompat) return;
 
             var mainOptic = f_fcs_mainOptic(fcs);
             if (mainOptic == null)
             {
-                try { f_fcs_mainOptic(fcs) = dayOptic; } catch { }
+                try { f_fcs_mainOptic(fcs) = dayOptic; }
+                catch (Exception ex) { LRFDebugLogger.LogError("MainOptic assignment", ex); }
             }
 
             if (f_fcs_authoritativeOptic(fcs) == null)
             {
-                try { f_fcs_authoritativeOptic(fcs) = dayOptic; } catch { }
+                try { f_fcs_authoritativeOptic(fcs) = dayOptic; }
+                catch (Exception ex) { LRFDebugLogger.LogError("AuthoritativeOptic assignment", ex); }
             }
 
-            try { f_uo_hasGuidance(dayOptic) = true; } catch { }
-            try { dayOptic.GuidanceLight = true; } catch { }
+            try { f_uo_hasGuidance(dayOptic) = true; }
+            catch (Exception ex) { LRFDebugLogger.LogError("HasGuidance assignment", ex); }
+            try { dayOptic.GuidanceLight = true; }
+            catch (Exception ex) { LRFDebugLogger.LogError("GuidanceLight assignment", ex); }
 
-            try { fcs.RegisterOptic(dayOptic); } catch { }
-            try { fcs.NotifyActiveOpticChanged(dayOptic); } catch { }
+            try { fcs.RegisterOptic(dayOptic); }
+            catch (Exception ex) { LRFDebugLogger.LogError("RegisterOptic", ex); }
+            try { fcs.NotifyActiveOpticChanged(dayOptic); }
+            catch (Exception ex) { LRFDebugLogger.LogError("NotifyActiveOpticChanged", ex); }
 
             if (forceLaseCompat && fcs.GetComponent<ForceLaseCompat>() == null)
                 fcs.gameObject.AddComponent<ForceLaseCompat>();
         }
 
-        public static void ApplyRedDotLRF(FireControlSystem fcs, UsableOptic dayOptic, string cacheKey, ref object reticle_cached_ref, Transform laserParent = null, bool forceLaseCompat = false)
+        /// <summary>
+        /// 配置 LRF 激光发射器
+        /// </summary>
+        private static void ConfigureLrfLaserOrigin(FireControlSystem fcs, UsableOptic dayOptic, Transform laserParent, bool forceLaserCompat)
         {
-            if (fcs == null || dayOptic == null || dayOptic.reticleMesh == null)
-            {
-#if DEBUG
-                if (UnderdogsDebug.DEBUG_LRF)
-                    MelonLogger.Warning($"[UE] RedDotLRF 跳过: FCS/Optic 未就绪 | FCS={(fcs != null)} Optic={(dayOptic != null)} Reticle={(dayOptic?.reticleMesh != null)}");
-#endif
-                return;
-            }
+            if (fcs == null) return;
 
-            if (forceLaseCompat && dayOptic != null)
+            if (forceLaserCompat && dayOptic != null)
             {
                 bool needCompatOrigin = fcs.LaserOrigin == null ||
                                         fcs.LaserOrigin.name != "ue_lase" ||
@@ -358,119 +386,108 @@ namespace UnderdogsEnhanced
                 lase.transform.SetParent(laserParent ?? fcs.transform, false);
                 fcs.LaserOrigin = lase.transform;
             }
+        }
 
+        /// <summary>
+        /// 配置 LRF 基础参数
+        /// </summary>
+        private static void ConfigureLrfBasicParams(FireControlSystem fcs, float maxRange = 4000f)
+        {
+            if (fcs == null) return;
             fcs.LaserAim = LaserAimMode.Fixed;
-            fcs.MaxLaserRange = 4000f;
-            EnsureLaseReadiness(fcs, dayOptic, forceLaseCompat);
+            fcs.MaxLaserRange = maxRange;
+        }
 
-            var rm = dayOptic.reticleMesh;
+        /// <summary>
+        /// 配置 Reticle LasePoint 元素
+        /// </summary>
+        private static void ConfigureReticleLasePoint(ReticleMesh rm, string cacheKey, ref object reticle_cached_ref)
+        {
             var f_cachedReticles = typeof(ReticleMesh).GetField("cachedReticles", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
             var cachedReticles = f_cachedReticles?.GetValue(null) as System.Collections.IDictionary;
-            if (cachedReticles != null && cachedReticles.Contains(cacheKey))
+            if (cachedReticles == null || !cachedReticles.Contains(cacheKey))
+                return;
+
+            var srcCached = cachedReticles[cacheKey];
+            var cachedType = srcCached.GetType();
+            var f_tree = cachedType.GetField("tree", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            var f_mesh = cachedType.GetField("mesh", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            var f_reticle = typeof(ReticleMesh).GetField("reticle", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            var f_smr = typeof(ReticleMesh).GetField("SMR", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+            var reticleSO = ScriptableObject.Instantiate(f_tree.GetValue(srcCached) as ReticleSO);
+            if (reticle_cached_ref == null) reticle_cached_ref = System.Activator.CreateInstance(cachedType);
+            UECommonUtil.ShallowCopy(reticle_cached_ref, srcCached);
+            f_tree.SetValue(reticle_cached_ref, reticleSO);
+
+            reticleSO.lights = new List<ReticleTree.Light>() { new ReticleTree.Light(), new ReticleTree.Light() };
+            reticleSO.lights[0] = (f_tree.GetValue(srcCached) as ReticleSO).lights[0];
+            reticleSO.lights[1].type = ReticleTree.Light.Type.Powered;
+            reticleSO.lights[1].color = new RGB(15f, 0f, 0f, true);
+
+            reticleSO.planes[0].elements.Add(new ReticleTree.Angular(new Vector2(0, 0), null, ReticleTree.GroupBase.Alignment.LasePoint));
+            var lasePoint = reticleSO.planes[0].elements[reticleSO.planes[0].elements.Count - 1] as ReticleTree.Angular;
+            f_mesh.SetValue(reticle_cached_ref, null);
+            lasePoint.name = "LasePoint";
+            lasePoint.position = new ReticleTree.Position(0, 0, AngularLength.AngularUnit.MIL_USSR, LinearLength.LinearUnit.M);
+            lasePoint.elements.Add(new ReticleTree.Circle());
+            var circle = lasePoint.elements[0] as ReticleTree.Circle;
+            var f_mrad = typeof(AngularLength).GetField("mrad", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            object br = circle.radius; f_mrad.SetValue(br, 0.5236f); circle.radius = (AngularLength)br;
+            object bt = circle.thickness; f_mrad.SetValue(bt, 0.16f); circle.thickness = (AngularLength)bt;
+            circle.illumination = ReticleTree.Light.Type.Powered;
+            circle.visualType = ReticleTree.VisualElement.Type.ReflectedAdditive;
+            circle.position = new ReticleTree.Position(0, 0, AngularLength.AngularUnit.MIL_USSR, LinearLength.LinearUnit.M);
+
+            rm.reticleSO = reticleSO;
+            f_reticle?.SetValue(rm, reticle_cached_ref);
+            f_smr?.SetValue(rm, null);
+            rm.Load();
+        }
+
+        public static void ApplyRedDotLRF(FireControlSystem fcs, UsableOptic dayOptic, string cacheKey, ref object reticle_cached_ref, Transform laserParent = null, bool forceLaseCompat = false)
+        {
+            if (fcs == null || dayOptic == null || dayOptic.reticleMesh == null)
             {
-                var srcCached = cachedReticles[cacheKey];
-                var cachedType = srcCached.GetType();
-                var f_tree = cachedType.GetField("tree", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                var f_mesh = cachedType.GetField("mesh", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                var f_reticle = typeof(ReticleMesh).GetField("reticle", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                var f_smr = typeof(ReticleMesh).GetField("SMR", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-
-                var reticleSO = ScriptableObject.Instantiate(f_tree.GetValue(srcCached) as ReticleSO);
-                if (reticle_cached_ref == null) reticle_cached_ref = System.Activator.CreateInstance(cachedType);
-                UECommonUtil.ShallowCopy(reticle_cached_ref, srcCached);
-                f_tree.SetValue(reticle_cached_ref, reticleSO);
-
-                reticleSO.lights = new List<ReticleTree.Light>() { new ReticleTree.Light(), new ReticleTree.Light() };
-                reticleSO.lights[0] = (f_tree.GetValue(srcCached) as ReticleSO).lights[0];
-                reticleSO.lights[1].type = ReticleTree.Light.Type.Powered;
-                reticleSO.lights[1].color = new RGB(15f, 0f, 0f, true);
-
-                reticleSO.planes[0].elements.Add(new ReticleTree.Angular(new Vector2(0, 0), null, ReticleTree.GroupBase.Alignment.LasePoint));
-                var lasePoint = reticleSO.planes[0].elements[reticleSO.planes[0].elements.Count - 1] as ReticleTree.Angular;
-                f_mesh.SetValue(reticle_cached_ref, null);
-                lasePoint.name = "LasePoint";
-                lasePoint.position = new ReticleTree.Position(0, 0, AngularLength.AngularUnit.MIL_USSR, LinearLength.LinearUnit.M);
-                lasePoint.elements.Add(new ReticleTree.Circle());
-                var circle = lasePoint.elements[0] as ReticleTree.Circle;
-                var f_mrad = typeof(AngularLength).GetField("mrad", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                object br = circle.radius; f_mrad.SetValue(br, 0.5236f); circle.radius = (AngularLength)br;
-                object bt = circle.thickness; f_mrad.SetValue(bt, 0.16f); circle.thickness = (AngularLength)bt;
-                circle.illumination = ReticleTree.Light.Type.Powered;
-                circle.visualType = ReticleTree.VisualElement.Type.ReflectedAdditive;
-                circle.position = new ReticleTree.Position(0, 0, AngularLength.AngularUnit.MIL_USSR, LinearLength.LinearUnit.M);
-
-                rm.reticleSO = reticleSO;
-                f_reticle?.SetValue(rm, reticle_cached_ref);
-                f_smr?.SetValue(rm, null);
-                rm.Load();
+#if DEBUG
+                if (UnderdogsDebug.DEBUG_LRF)
+                    MelonLogger.Warning($"[TIMING] RedDotLRF 跳过: FCS/Optic 未就绪 | FCS={(fcs != null)} Optic={(dayOptic != null)} Reticle={(dayOptic?.reticleMesh != null)}");
+#endif
+                return;
             }
+
+            // 使用公共方法配置
+            ConfigureLrfLaserOrigin(fcs, dayOptic, laserParent, forceLaseCompat);
+            ConfigureLrfBasicParams(fcs, 4000f);
+            EnsureLaseReadiness(fcs, dayOptic, forceLaseCompat);
+
+            // 使用公共方法配置 Reticle
+            ConfigureReticleLasePoint(dayOptic.reticleMesh, cacheKey, ref reticle_cached_ref);
         }
 
         public static void ApplyLimitedLRF(FireControlSystem fcs, UsableOptic dayOptic, string cacheKey, ref object reticle_cached_ref, Transform laserParent = null, Vector2 textPos = default)
         {
             if (fcs == null || dayOptic == null || dayOptic.reticleMesh == null) return;
             if (fcs.gameObject.GetComponent<LimitedLRF>() != null) return;
-            if (fcs.LaserOrigin == null)
-            {
-                GameObject lase = new GameObject("lase");
-                lase.transform.SetParent(laserParent ?? fcs.transform, false);
-                fcs.LaserOrigin = lase.transform;
-            }
+
+            // 使用公共方法配置
+            ConfigureLrfLaserOrigin(fcs, dayOptic, laserParent, false);
 
             GameObject rangeReadoutTemplate = GetOrCreateRangeReadout();
             if (rangeReadoutTemplate == null)
             {
-                MelonLogger.Warning($"[UE] LimitedLRF 跳过: 缺少量程显示模板 | cacheKey={cacheKey}");
+                MelonLogger.Warning($"[TIMING] LimitedLRF 跳过: 缺少量程显示模板 | cacheKey={cacheKey}");
                 return;
             }
 
-            fcs.LaserAim = LaserAimMode.Fixed;
-            fcs.MaxLaserRange = 4000f;
+            ConfigureLrfBasicParams(fcs, 4000f);
             EnsureLaseReadiness(fcs, dayOptic, false);
             fcs.gameObject.AddComponent<LimitedLRF>();
 
-            var rm = dayOptic.reticleMesh;
-            var f_cachedReticles = typeof(ReticleMesh).GetField("cachedReticles", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            var cachedReticles = f_cachedReticles?.GetValue(null) as System.Collections.IDictionary;
-            if (cachedReticles != null && cachedReticles.Contains(cacheKey))
-            {
-                var srcCached = cachedReticles[cacheKey];
-                var cachedType = srcCached.GetType();
-                var f_tree = cachedType.GetField("tree", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                var f_mesh = cachedType.GetField("mesh", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                var f_reticle = typeof(ReticleMesh).GetField("reticle", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                var f_smr = typeof(ReticleMesh).GetField("SMR", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            // 使用公共方法配置 Reticle
+            ConfigureReticleLasePoint(dayOptic.reticleMesh, cacheKey, ref reticle_cached_ref);
 
-                var reticleSO = ScriptableObject.Instantiate(f_tree.GetValue(srcCached) as ReticleSO);
-                if (reticle_cached_ref == null) reticle_cached_ref = System.Activator.CreateInstance(cachedType);
-                UECommonUtil.ShallowCopy(reticle_cached_ref, srcCached);
-                f_tree.SetValue(reticle_cached_ref, reticleSO);
-
-                reticleSO.lights = new List<ReticleTree.Light>() { new ReticleTree.Light(), new ReticleTree.Light() };
-                reticleSO.lights[0] = (f_tree.GetValue(srcCached) as ReticleSO).lights[0];
-                reticleSO.lights[1].type = ReticleTree.Light.Type.Powered;
-                reticleSO.lights[1].color = new RGB(15f, 0f, 0f, true);
-
-                reticleSO.planes[0].elements.Add(new ReticleTree.Angular(new Vector2(0, 0), null, ReticleTree.GroupBase.Alignment.LasePoint));
-                var lasePoint = reticleSO.planes[0].elements[reticleSO.planes[0].elements.Count - 1] as ReticleTree.Angular;
-                f_mesh.SetValue(reticle_cached_ref, null);
-                lasePoint.name = "LasePoint";
-                lasePoint.position = new ReticleTree.Position(0, 0, AngularLength.AngularUnit.MIL_USSR, LinearLength.LinearUnit.M);
-                lasePoint.elements.Add(new ReticleTree.Circle());
-                var circle = lasePoint.elements[0] as ReticleTree.Circle;
-                var f_mrad = typeof(AngularLength).GetField("mrad", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                object br = circle.radius; f_mrad.SetValue(br, 0.5236f); circle.radius = (AngularLength)br;
-                object bt = circle.thickness; f_mrad.SetValue(bt, 0.16f); circle.thickness = (AngularLength)bt;
-                circle.illumination = ReticleTree.Light.Type.Powered;
-                circle.visualType = ReticleTree.VisualElement.Type.ReflectedAdditive;
-                circle.position = new ReticleTree.Position(0, 0, AngularLength.AngularUnit.MIL_USSR, LinearLength.LinearUnit.M);
-
-                rm.reticleSO = reticleSO;
-                f_reticle?.SetValue(rm, reticle_cached_ref);
-                f_smr?.SetValue(rm, null);
-                rm.Load();
-            }
-
+            // LimitedLRF 专属逻辑: Canvas 量程显示
             GameObject canvas = GameObject.Instantiate(rangeReadoutTemplate);
             canvas.transform.SetParent(dayOptic.transform, false);
             canvas.SetActive(true);
