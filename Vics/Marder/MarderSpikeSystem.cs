@@ -26,6 +26,111 @@ namespace UnderdogsEnhanced
         MCLOS
     }
 
+    internal static class MarderSpikeMissileRegistry
+    {
+        private static readonly Dictionary<int, List<LiveRound>> missilesByVehicleId = new Dictionary<int, List<LiveRound>>();
+
+        internal static void Clear()
+        {
+            missilesByVehicleId.Clear();
+        }
+
+        internal static void Register(LiveRound round)
+        {
+            if (!ShouldTrack(round))
+                return;
+
+            Vehicle vehicle = round.Shooter != null ? round.Shooter.GetComponentInParent<Vehicle>() : null;
+            if (vehicle == null)
+                return;
+
+            int vehicleId = vehicle.GetInstanceID();
+            if (!missilesByVehicleId.TryGetValue(vehicleId, out List<LiveRound> missiles))
+            {
+                missiles = new List<LiveRound>(2);
+                missilesByVehicleId.Add(vehicleId, missiles);
+            }
+
+            Prune(missiles);
+            if (!missiles.Contains(round))
+                missiles.Add(round);
+        }
+
+        internal static void Unregister(LiveRound round)
+        {
+            if (round == null || missilesByVehicleId.Count == 0)
+                return;
+
+            Vehicle vehicle = round.Shooter != null ? round.Shooter.GetComponentInParent<Vehicle>() : null;
+            if (vehicle != null && missilesByVehicleId.TryGetValue(vehicle.GetInstanceID(), out List<LiveRound> missiles))
+            {
+                missiles.Remove(round);
+                Prune(missiles);
+                if (missiles.Count == 0)
+                    missilesByVehicleId.Remove(vehicle.GetInstanceID());
+                return;
+            }
+
+            int[] vehicleIds = missilesByVehicleId.Keys.ToArray();
+            for (int i = 0; i < vehicleIds.Length; i++)
+            {
+                if (!missilesByVehicleId.TryGetValue(vehicleIds[i], out List<LiveRound> list))
+                    continue;
+
+                list.Remove(round);
+                Prune(list);
+                if (list.Count == 0)
+                    missilesByVehicleId.Remove(vehicleIds[i]);
+            }
+        }
+
+        internal static LiveRound ResolveLatest(Vehicle vehicle)
+        {
+            if (vehicle == null)
+                return null;
+
+            int vehicleId = vehicle.GetInstanceID();
+            if (!missilesByVehicleId.TryGetValue(vehicleId, out List<LiveRound> missiles))
+                return null;
+
+            Prune(missiles);
+            if (missiles.Count == 0)
+            {
+                missilesByVehicleId.Remove(vehicleId);
+                return null;
+            }
+
+            for (int i = missiles.Count - 1; i >= 0; i--)
+            {
+                LiveRound round = missiles[i];
+                if (round != null && !round.IsDestroyed)
+                    return round;
+            }
+
+            missilesByVehicleId.Remove(vehicleId);
+            return null;
+        }
+
+        private static void Prune(List<LiveRound> missiles)
+        {
+            if (missiles == null)
+                return;
+
+            for (int i = missiles.Count - 1; i >= 0; i--)
+            {
+                LiveRound round = missiles[i];
+                if (round == null || round.IsDestroyed)
+                    missiles.RemoveAt(i);
+            }
+        }
+
+        private static bool ShouldTrack(LiveRound round)
+        {
+            string ammoName = round?.Info != null ? round.Info.Name : null;
+            return MarderSpikeAmmo.IsSpikeAmmoName(ammoName) || MarderSpikeAmmo.IsOriginalMilanName(ammoName);
+        }
+    }
+
     internal static class MarderSpikeGuidanceRecovery
     {
         private static readonly FieldInfo f_gu_unguidedMissiles = typeof(MissileGuidanceUnit).GetField("_unguidedMissiles", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -275,6 +380,8 @@ namespace UnderdogsEnhanced
 
         internal static void OnSceneChanged(string sceneName)
         {
+            MarderSpikeMissileRegistry.Clear();
+
             if (rigsByVehicleId.Count == 0)
                 return;
 
@@ -342,6 +449,8 @@ namespace UnderdogsEnhanced
             string ammoName = round.Info != null ? round.Info.Name : null;
             if (!MarderSpikeAmmo.IsSpikeAmmoName(ammoName) && !MarderSpikeAmmo.IsOriginalMilanName(ammoName))
                 return;
+
+            MarderSpikeMissileRegistry.Register(round);
 
             Vehicle vehicle = round.Shooter != null ? round.Shooter.GetComponentInParent<Vehicle>() : null;
             if (vehicle == null)
@@ -497,7 +606,7 @@ namespace UnderdogsEnhanced
         private const float LockBoundsRefreshInterval = 0.1f;
         private const float LockScreenRectRefreshInterval = 0.2f;
         private const float ScopeCanvasRefreshInterval = 0.5f;
-        private const float SceneMissileSearchInterval = 0.5f;
+        private const float WeaponDefaultsRefreshInterval = 0.5f;
         private const float PassedTargetDistanceThreshold = 15f;
         private static readonly string[] DayStockVisualPaths =
         {
@@ -584,7 +693,7 @@ namespace UnderdogsEnhanced
         private float nextTargetBoundsRefreshTime;
         private float nextTargetScreenRectRefreshTime;
         private float nextScopeCanvasRefreshTime;
-        private float nextSceneMissileSearchTime;
+        private float nextWeaponDefaultsRefreshTime;
         private float closestMissileTargetDistance = float.PositiveInfinity;
         private readonly Vector3[] targetBoundsCorners = new Vector3[8];
         private Transform fnfGuideTransform;
@@ -651,9 +760,7 @@ namespace UnderdogsEnhanced
             slotRegistrationDirty = true;
             CacheMilanStabilizerTargets();
             EnsureAimProxy();
-            EnsureThermalSlot();
-            EnsureFnfGuide();
-            ApplyWeaponDefaults();
+            InitializeWeaponDefaults();
             EnsureOverlay();
             enabled = true;
         }
@@ -844,23 +951,76 @@ namespace UnderdogsEnhanced
             }
 
             EnsureSlotRegistration();
-            CacheLatestNonMissileSlot();
-            ApplyWeaponDefaults();
             UpdateMissileReference();
-            HandleLockInput();
-            HandleTopAttackToggleInput();
+
+            bool isPlayerRig = IsPlayerControllingThisRig();
+            bool hasLiveMissile = activeMissile != null && !activeMissile.IsDestroyed;
+            TryRefreshWeaponDefaults(isPlayerRig, hasLiveMissile);
+
+            if (isPlayerRig)
+            {
+                CacheLatestNonMissileSlot();
+                HandleLockInput();
+                HandleTopAttackToggleInput();
+                UpdateLockTarget();
+            }
+            else if (HasTrackingCandidate())
+            {
+                ClearTrackingCandidate();
+            }
+
             UpdateGuidanceMode();
-            UpdateLockTarget();
-            UpdateTargetPassFallback();
-            UpdateAimProxy();
-            UpdateMissileControl();
-            UpdateMilanStabilizerGate();
-            EnsureInitialThermalView();
-            TryEnterMissileViewIfNeeded();
-            UpdateScopeCanvasSuppression();
-            UpdateDefaultScopeSuppression();
-            UpdateOverlay();
-            CleanupMissileSlotIfNeeded();
+
+            bool hasLockTarget = HasLockTarget();
+            if (hasLiveMissile || hasLockTarget || isPlayerRig)
+            {
+                UpdateAimProxy();
+                UpdateGuidanceAimElement();
+            }
+
+            if (hasLiveMissile)
+            {
+                if (hasLockTarget)
+                    UpdateTargetPassFallback();
+
+                UpdateMissileControl();
+            }
+
+            if (isPlayerRig || milanStabilizerGateApplied)
+                UpdateMilanStabilizerGate();
+
+            if (ShouldMaintainPlayerPresentation(isPlayerRig))
+            {
+                if (isPlayerRig)
+                {
+                    SyncThermalSlotTransforms();
+                    EnsureInitialThermalView();
+                    TryEnterMissileViewIfNeeded();
+                }
+
+                UpdateScopeCanvasSuppression();
+                UpdateDefaultScopeSuppression();
+                UpdateOverlay();
+            }
+
+            if (!hasLiveMissile && NeedsMissileSlotCleanup())
+                CleanupMissileSlotIfNeeded();
+        }
+
+        private bool ShouldMaintainPlayerPresentation(bool isPlayerRig)
+        {
+            return isPlayerRig
+                || (overlayObject != null && overlayObject.activeSelf)
+                || scopeCanvasSuppressed
+                || scopeCanvasSnapshots.Count > 0
+                || defaultScopeOwnerId == GetInstanceID();
+        }
+
+        private bool NeedsMissileSlotCleanup()
+        {
+            return missileSlotObject != null
+                || missileSlot != null
+                || missileViewRequested;
         }
 
         private void OnDisable()
@@ -1119,66 +1279,53 @@ namespace UnderdogsEnhanced
             return transform;
         }
 
-        private void ApplyWeaponDefaults()
+        private void InitializeWeaponDefaults()
         {
             EnsureThermalSlot();
+            EnsureLaserDefaults();
+            EnsureFnfGuide();
+            ApplyOpticRuntimeDefaults();
+            InitializeOpticsIfNeeded();
+            EnsureLaserPointCorrection();
+            EnsureGuidanceDefaults(updateAimElement: true);
+            nextWeaponDefaultsRefreshTime = Time.unscaledTime + WeaponDefaultsRefreshInterval;
+        }
 
-            if (fcs != null)
-            {
-                if (fcs.MaxLaserRange < 4000f)
-                    fcs.MaxLaserRange = 4000f;
+        private void TryRefreshWeaponDefaults(bool isPlayerRig, bool hasLiveMissile)
+        {
+            if (!isPlayerRig && !hasLiveMissile)
+                return;
 
-                if (fcs.LaserOrigin == null)
-                {
-                    GameObject laser = new GameObject("spike lase");
-                    laser.transform.SetParent(daySlot != null ? daySlot.transform : fcs.transform, false);
-                    fcs.LaserOrigin = laser.transform;
-                }
-            }
+            if (Time.unscaledTime < nextWeaponDefaultsRefreshTime)
+                return;
 
+            EnsureLaserDefaults();
             EnsureFnfGuide();
 
-            if (dayOptic != null)
+            if (isPlayerRig)
             {
-                try { opticGuidanceField?.SetValue(dayOptic, true); } catch { }
-                try { dayOptic.GuidanceLight = true; } catch { }
-                try { dayOptic.enabled = true; } catch { }
-                try { if (!dayOptic.gameObject.activeSelf) dayOptic.gameObject.SetActive(true); } catch { }
-                SuppressOpticPresentation(dayOptic, false);
-                SuppressDayStockReticle(dayOptic);
+                EnsureThermalSlot();
+                ApplyOpticRuntimeDefaults();
+                InitializeOpticsIfNeeded();
+                EnsureLaserPointCorrection();
             }
 
-            if (thermalOptic != null)
-            {
-                try { opticGuidanceField?.SetValue(thermalOptic, true); } catch { }
-                try { thermalOptic.GuidanceLight = true; } catch { }
-                try { thermalOptic.enabled = true; } catch { }
-                try { if (!thermalOptic.gameObject.activeSelf) thermalOptic.gameObject.SetActive(true); } catch { }
-                SuppressOpticPresentation(thermalOptic, true);
-            }
+            nextWeaponDefaultsRefreshTime = Time.unscaledTime + WeaponDefaultsRefreshInterval;
+        }
 
-            if (!opticsInitialized)
-            {
-                try { fcs?.RegisterOptic(dayOptic); } catch { }
-                try { if (thermalOptic != null) fcs?.RegisterOptic(thermalOptic); } catch { }
-                TryAssignMainAndNightOptics(dayOptic, thermalOptic);
-                TryAssignAuthoritativeOptic(dayOptic);
-                try { daySlot.WasUsingNightMode = false; } catch { }
-                try { if (thermalSlot != null) thermalSlot.WasUsingNightMode = true; } catch { }
-                try { fcs?.NotifyActiveOpticChanged(dayOptic); } catch { }
-                try { if (CameraSlot.ActiveInstance == thermalSlot && daySlot != null) CameraSlot.SetActiveSlot(daySlot); } catch { }
-                opticsInitialized = true;
-            }
+        private void EnsureLaserDefaults()
+        {
+            if (fcs == null)
+                return;
 
-            if (fcs != null && dayOptic != null && thermalOptic != null)
-                UECommonUtil.InstallLaserPointCorrection(fcs, dayOptic, thermalOptic);
+            if (fcs.MaxLaserRange < 4000f)
+                fcs.MaxLaserRange = 4000f;
 
-            if (guidanceUnit != null)
+            if (fcs.LaserOrigin == null)
             {
-                guidanceUnit.ResetAimOnLaunch = false;
-                Transform desiredAimElement = guidanceMode == SpikeGuidanceMode.FnF && fnfGuideTransform != null ? fnfGuideTransform : aimProxy;
-                if (desiredAimElement != null && guidanceUnit.AimElement != desiredAimElement)
-                    guidanceUnit.AimElement = desiredAimElement;
+                GameObject laser = new GameObject("spike lase");
+                laser.transform.SetParent(daySlot != null ? daySlot.transform : fcs.transform, false);
+                fcs.LaserOrigin = laser.transform;
             }
         }
 
@@ -1211,6 +1358,78 @@ namespace UnderdogsEnhanced
                 return;
 
             try { authoritativeOpticField?.SetValue(fcs, optic); } catch { }
+        }
+
+        private void ApplyOpticRuntimeDefaults()
+        {
+            if (dayOptic != null)
+            {
+                try { opticGuidanceField?.SetValue(dayOptic, true); } catch { }
+                try { dayOptic.GuidanceLight = true; } catch { }
+                try { dayOptic.enabled = true; } catch { }
+                try { if (!dayOptic.gameObject.activeSelf) dayOptic.gameObject.SetActive(true); } catch { }
+                SuppressOpticPresentation(dayOptic, false);
+                SuppressDayStockReticle(dayOptic);
+            }
+
+            if (thermalOptic != null)
+            {
+                try { opticGuidanceField?.SetValue(thermalOptic, true); } catch { }
+                try { thermalOptic.GuidanceLight = true; } catch { }
+                try { thermalOptic.enabled = true; } catch { }
+                try { if (!thermalOptic.gameObject.activeSelf) thermalOptic.gameObject.SetActive(true); } catch { }
+                SuppressOpticPresentation(thermalOptic, true);
+            }
+        }
+
+        private void InitializeOpticsIfNeeded()
+        {
+            if (opticsInitialized)
+                return;
+
+            try { fcs?.RegisterOptic(dayOptic); } catch { }
+            try { if (thermalOptic != null) fcs?.RegisterOptic(thermalOptic); } catch { }
+            TryAssignMainAndNightOptics(dayOptic, thermalOptic);
+            TryAssignAuthoritativeOptic(dayOptic);
+            try { daySlot.WasUsingNightMode = false; } catch { }
+            try { if (thermalSlot != null) thermalSlot.WasUsingNightMode = true; } catch { }
+            try { fcs?.NotifyActiveOpticChanged(dayOptic); } catch { }
+            try { if (CameraSlot.ActiveInstance == thermalSlot && daySlot != null) CameraSlot.SetActiveSlot(daySlot); } catch { }
+            opticsInitialized = true;
+        }
+
+        private void EnsureLaserPointCorrection()
+        {
+            if (fcs != null && dayOptic != null && thermalOptic != null)
+                UECommonUtil.InstallLaserPointCorrection(fcs, dayOptic, thermalOptic);
+        }
+
+        private void UpdateGuidanceAimElement()
+        {
+            EnsureGuidanceDefaults(updateAimElement: true);
+        }
+
+        private void EnsureGuidanceDefaults(bool updateAimElement)
+        {
+            if (guidanceUnit == null)
+                return;
+
+            guidanceUnit.ResetAimOnLaunch = false;
+            if (!updateAimElement)
+                return;
+
+            Transform desiredAimElement = guidanceMode == SpikeGuidanceMode.FnF && fnfGuideTransform != null ? fnfGuideTransform : aimProxy;
+            if (desiredAimElement != null && guidanceUnit.AimElement != desiredAimElement)
+                guidanceUnit.AimElement = desiredAimElement;
+        }
+
+        private void SyncThermalSlotTransforms()
+        {
+            if (thermalOptic != null && dayOptic != null)
+                RefreshOpticTransform(thermalOptic.transform, dayOptic.transform);
+
+            if (thermalSlotObject != null && daySlot != null)
+                RefreshSlotTransform(thermalSlotObject.transform, daySlot.transform);
         }
 
         private void EnsureInitialThermalView()
@@ -1895,6 +2114,8 @@ namespace UnderdogsEnhanced
                     }
 
                     topTracker.SetInitialLock(lockedVehicle, lockedAnchor);
+                    // 传递已缓存的 colliders，避免 Tracker 重复调用 GetComponentsInChildren
+                    topTracker.SetCachedColliders(lockedColliders);
                 }
                 else
                 {
@@ -1906,6 +2127,8 @@ namespace UnderdogsEnhanced
                     }
 
                     tracker.SetInitialLock(lockedVehicle, lockedAnchor);
+                    // 传递已缓存的 colliders，避免 Tracker 重复调用 GetComponentsInChildren
+                    tracker.SetCachedColliders(lockedColliders);
                 }
 
                 MarderSpikeMissileCameraFollow follow = GetMissileFollow(activeMissile);
@@ -2171,38 +2394,7 @@ namespace UnderdogsEnhanced
             if (activeMissile != null && !activeMissile.IsDestroyed)
                 return activeMissile;
 
-            if (Time.unscaledTime < nextSceneMissileSearchTime)
-                return null;
-
-            LiveRound sceneMissile = FindSceneMissile();
-            if (sceneMissile != null)
-                return sceneMissile;
-
-            return null;
-        }
-
-        private LiveRound FindSceneMissile()
-        {
-            nextSceneMissileSearchTime = Time.unscaledTime + SceneMissileSearchInterval;
-            LiveRound[] rounds = Resources.FindObjectsOfTypeAll<LiveRound>();
-            LiveRound latest = null;
-            for (int i = 0; i < rounds.Length; i++)
-            {
-                LiveRound round = rounds[i];
-                if (round == null || round.IsDestroyed || round.Info == null)
-                    continue;
-
-                if (!MarderSpikeAmmo.IsSpikeAmmoName(round.Info.Name) && !MarderSpikeAmmo.IsOriginalMilanName(round.Info.Name))
-                    continue;
-
-                Vehicle shooterVehicle = round.Shooter != null ? round.Shooter.GetComponentInParent<Vehicle>() : null;
-                if (shooterVehicle != vehicle)
-                    continue;
-
-                latest = round;
-            }
-
-            return latest;
+            return MarderSpikeMissileRegistry.ResolveLatest(vehicle);
         }
 
         private void EnsureMissileSlot(LiveRound missile)
@@ -2369,13 +2561,20 @@ namespace UnderdogsEnhanced
                 return;
             }
 
+            // 只在目标变化时才调用昂贵的 GetComponentsInChildren
+            bool targetChanged = candidateVehicle != targetVehicle;
+
             candidateVehicle = targetVehicle;
             candidateAnchor = ResolveTrackingAnchor(targetVehicle, hit.collider != null ? hit.collider.transform : null);
             candidateRenderer = ResolveTrackingRenderer(targetVehicle, candidateAnchor);
             candidateCollider = ResolveAnchorCollider(candidateAnchor);
             candidateDistance = hit.distance;
-            candidateColliders = targetVehicle.GetComponentsInChildren<Collider>(true);
-            candidateRenderers = targetVehicle.GetComponentsInChildren<Renderer>(true);
+
+            if (targetChanged)
+            {
+                candidateColliders = targetVehicle.GetComponentsInChildren<Collider>(true);
+                candidateRenderers = targetVehicle.GetComponentsInChildren<Renderer>(true);
+            }
         }
 
         private bool TryAcquireTrackingHit(Ray ray, int layerMask, out RaycastHit selectedHit)
@@ -2761,6 +2960,8 @@ namespace UnderdogsEnhanced
                         lockedAnchor != null ? lockedAnchor : lockedRenderer != null ? lockedRenderer.transform : null,
                         lockedRenderer,
                         targetAimPoint);
+                    // 传递已缓存的 colliders
+                    topTracker.SetCachedColliders(lockedColliders);
 
                     if (topTracker.MissedTarget)
                     {
@@ -2786,6 +2987,8 @@ namespace UnderdogsEnhanced
                         lockedAnchor != null ? lockedAnchor : lockedRenderer != null ? lockedRenderer.transform : null,
                         lockedRenderer,
                         targetAimPoint);
+                    // 传递已缓存的 colliders
+                    tracker.SetCachedColliders(lockedColliders);
 
                     if (tracker.MissedTarget)
                     {
@@ -3955,6 +4158,7 @@ namespace UnderdogsEnhanced
     {
         private static void Prefix(LiveRound __instance)
         {
+            MarderSpikeMissileRegistry.Unregister(__instance);
             MarderSpikeGuidanceRecovery.NotifyMissileGone(__instance);
             __instance.GetComponent<MarderSpikeMissileCameraFollow>()?.Restore();
         }
@@ -3965,6 +4169,7 @@ namespace UnderdogsEnhanced
     {
         private static void Prefix(LiveRound __instance)
         {
+            MarderSpikeMissileRegistry.Unregister(__instance);
             MarderSpikeGuidanceRecovery.NotifyMissileGone(__instance);
             __instance.GetComponent<MarderSpikeMissileCameraFollow>()?.Restore();
         }
@@ -3975,6 +4180,7 @@ namespace UnderdogsEnhanced
     {
         private static void Prefix(LiveRound __instance)
         {
+            MarderSpikeMissileRegistry.Unregister(__instance);
             MarderSpikeGuidanceRecovery.NotifyMissileGone(__instance);
             __instance.GetComponent<MarderSpikeMissileCameraFollow>()?.Restore();
         }

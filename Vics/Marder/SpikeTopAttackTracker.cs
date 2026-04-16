@@ -34,6 +34,10 @@ namespace UnderdogsEnhanced
         private bool hasCurrentAimPoint;
         private float launchTime;
 
+        // 缓存的 colliders 数组，避免每帧调用 GetComponentsInChildren
+        private Collider[] cachedColliders;
+        private bool collidersCached = false;
+
         internal Vehicle LockedTarget => lockedTarget;
         internal bool MissedTarget => passedClosestPoint;
         internal bool DiveCommitted => diveCommitted;
@@ -99,22 +103,47 @@ namespace UnderdogsEnhanced
         {
             lockedTarget = target;
             lockedAnchor = anchor;
+            collidersCached = false;
+            CacheCollidersIfNeeded();
             ResetAttackState();
             CalculateAttackParameters();
         }
 
         internal void UpdateLockSolution(Vehicle target, Transform anchor, Renderer renderer, Vector3 aimPoint)
         {
+            // 目标变化时重新缓存 colliders
             if (target != lockedTarget)
+            {
+                lockedTarget = target;
+                collidersCached = false;
+                CacheCollidersIfNeeded();
                 ResetAttackState();
+            }
 
-            lockedTarget = target;
             lockedAnchor = anchor;
             lockedRenderer = renderer;
             explicitAimPoint = aimPoint;
             hasExplicitAimPoint = true;
 
             CalculateAttackParameters();
+        }
+
+        /// <summary>
+        /// 设置缓存的 colliders 数组（从外部传入，避免重复获取）
+        /// </summary>
+        internal void SetCachedColliders(Collider[] colliders)
+        {
+            cachedColliders = colliders;
+            collidersCached = colliders != null && colliders.Length > 0;
+        }
+
+        private void CacheCollidersIfNeeded()
+        {
+            if (collidersCached || lockedTarget == null)
+                return;
+
+            cachedColliders = lockedTarget.GetComponentsInChildren<Collider>(true);
+            collidersCached = cachedColliders != null && cachedColliders.Length > 0;
         }
 
         private void ResetAttackState()
@@ -131,6 +160,7 @@ namespace UnderdogsEnhanced
         {
             missile = GetComponent<LiveRound>();
             launchTime = Time.time;
+            CacheCollidersIfNeeded();
             CalculateAttackParameters();
         }
 
@@ -154,13 +184,20 @@ namespace UnderdogsEnhanced
 
             if (lockedAnchor != null)
             {
-                Renderer anchorRenderer = lockedAnchor.GetComponent<Renderer>()
-                    ?? lockedAnchor.GetComponentInChildren<Renderer>(true);
+                // 优先使用 TRACKING OBJECT 的 renderer（PIL 的做法）
+                Renderer anchorRenderer = lockedAnchor.GetComponent<Renderer>();
                 if (anchorRenderer != null)
                     return anchorRenderer.bounds.center;
 
-                Collider anchorCollider = lockedAnchor.GetComponent<Collider>()
-                    ?? lockedAnchor.GetComponentInChildren<Collider>(true);
+                anchorRenderer = lockedAnchor.GetComponentInChildren<Renderer>(true);
+                if (anchorRenderer != null)
+                    return anchorRenderer.bounds.center;
+
+                Collider anchorCollider = lockedAnchor.GetComponent<Collider>();
+                if (anchorCollider != null)
+                    return anchorCollider.bounds.center;
+
+                anchorCollider = lockedAnchor.GetComponentInChildren<Collider>(true);
                 if (anchorCollider != null)
                     return anchorCollider.bounds.center;
 
@@ -172,27 +209,28 @@ namespace UnderdogsEnhanced
                 Transform tracking = lockedTarget.transform.Find("TRACKING OBJECT");
                 if (tracking != null)
                 {
-                    Renderer trackingRenderer = tracking.GetComponent<Renderer>()
-                        ?? tracking.GetComponentInChildren<Renderer>(true);
+                    Renderer trackingRenderer = tracking.GetComponent<Renderer>();
                     if (trackingRenderer != null)
                         return trackingRenderer.bounds.center;
 
-                    Collider trackingCollider = tracking.GetComponent<Collider>()
-                        ?? tracking.GetComponentInChildren<Collider>(true);
+                    Collider trackingCollider = tracking.GetComponent<Collider>();
                     if (trackingCollider != null)
                         return trackingCollider.bounds.center;
 
                     return tracking.position;
                 }
 
-                Collider[] colliders = lockedTarget.GetComponentsInChildren<Collider>(true);
-                if (colliders != null && colliders.Length > 0)
+                // 使用缓存计算 bounds（避免每帧 GetComponentsInChildren）
+                if (!collidersCached)
+                    CacheCollidersIfNeeded();
+
+                if (cachedColliders != null && cachedColliders.Length > 0)
                 {
                     bool initialized = false;
                     Bounds bounds = default(Bounds);
-                    for (int i = 0; i < colliders.Length; i++)
+                    for (int i = 0; i < cachedColliders.Length; i++)
                     {
-                        Collider collider = colliders[i];
+                        Collider collider = cachedColliders[i];
                         if (collider == null || collider.isTrigger)
                             continue;
 
