@@ -319,8 +319,9 @@ namespace UnderdogsEnhanced
         {
             if (donor != null)
             {
-                if (donor.Optic != null && donor.NarrowMesh != null && donor.WideMesh != null
-                    && donor.NarrowMesh.reticleSO != null && donor.WideMesh.reticleSO != null)
+                if (donor.Optic != null && donor.Slot != null && donor.NarrowMesh != null && donor.WideMesh != null
+                    && donor.NarrowMesh.reticleSO != null && donor.WideMesh.reticleSO != null
+                    && donor.PostPrefab != null && donor.BlitMaterial != null)
                     return donor;
 
                 donor = null;

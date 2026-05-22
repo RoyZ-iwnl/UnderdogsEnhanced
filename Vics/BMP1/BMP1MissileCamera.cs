@@ -80,13 +80,15 @@ namespace UnderdogsEnhanced
 
         public static void Init()
         {
-            if (initialized) return;
+            if (initialized && flirPostPrefab != null && flirBlitMaterialOriginal != null && reticleCanvas != null)
+                return;
+
             flirPostPrefab = UEResourceController.GetThermalFlirPostPrefab();
             flirBlitMaterialOriginal = UEResourceController.GetThermalFlirBlitMaterial();
             flirBlitMaterialNoScan = UEResourceController.GetThermalFlirBlitMaterialNoScan();
             reticleCanvas = UEResourceController.GetMissileReticleTemplate();
 
-            initialized = true;
+            initialized = flirPostPrefab != null && flirBlitMaterialOriginal != null && reticleCanvas != null;
 
 UnderdogsDebug.LogMCLOS("[BMP-1 MCLOS] Thermal assets initialized: FLIR=" + (flirPostPrefab != null) + ", BlitMatOriginal=" + (flirBlitMaterialOriginal != null) + ", BlitMatNoScan=" + (flirBlitMaterialNoScan != null));
         }

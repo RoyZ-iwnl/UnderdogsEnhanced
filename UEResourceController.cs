@@ -131,6 +131,7 @@ namespace UnderdogsEnhanced
 
         internal static GameObject GetLimitedLrfRangeReadoutTemplate()
         {
+            EnsureSharedDynamicAssetsValid();
             return RequireSharedDynamicAsset(nameof(LimitedLrfRangeReadoutTemplate)) ? LimitedLrfRangeReadoutTemplate : null;
         }
 
@@ -146,31 +147,37 @@ namespace UnderdogsEnhanced
 
         internal static GameObject GetThermalFlirPostPrefab()
         {
+            EnsureOpticsDynamicAssetsValid();
             return RequireOpticsDynamicAsset(nameof(ThermalFlirPostPrefab)) ? ThermalFlirPostPrefab : null;
         }
 
         internal static Material GetThermalFlirBlitMaterial()
         {
+            EnsureOpticsDynamicAssetsValid();
             return RequireOpticsDynamicAsset(nameof(ThermalFlirBlitMaterial)) ? ThermalFlirBlitMaterial : null;
         }
 
         internal static Material GetThermalFlirBlitMaterialNoScan()
         {
+            EnsureOpticsDynamicAssetsValid();
             return RequireOpticsDynamicAsset(nameof(ThermalFlirBlitMaterialNoScan)) ? ThermalFlirBlitMaterialNoScan : null;
         }
 
         internal static Material GetThermalFlirWhiteBlitMaterialNoScope()
         {
+            EnsureOpticsDynamicAssetsValid();
             return RequireOpticsDynamicAsset(nameof(ThermalFlirWhiteBlitMaterialNoScope)) ? ThermalFlirWhiteBlitMaterialNoScope : null;
         }
 
         internal static GameObject GetMissileReticleTemplate()
         {
+            EnsureOpticsDynamicAssetsValid();
             return RequireOpticsDynamicAsset(nameof(MissileReticleTemplate)) ? MissileReticleTemplate : null;
         }
 
         internal static GameObject CreateMissileReticleInstance()
         {
+            EnsureOpticsDynamicAssetsValid();
             return RequireOpticsDynamicAsset(nameof(MissileReticleTemplate))
                 ? UEAssetUtil.CloneInactive(MissileReticleTemplate, "MissileReticleCanvas")
                 : null;
@@ -372,7 +379,7 @@ namespace UnderdogsEnhanced
                 emes18Bundle = AssetBundle.LoadFromFile(bundlePath);
 
             if (emes18Bundle == null)
-                throw new FileNotFoundException($"EMES18 bundle load failed: {bundlePath}");
+                throw new FileNotFoundException($"Required resource bundle is missing: {bundlePath}. Please verify that Underdogs Enhanced was downloaded and installed completely.");
 
             Emes18MonitorPrefab = emes18Bundle.LoadAsset<GameObject>("EMES18");
             if (Emes18MonitorPrefab == null)
@@ -454,6 +461,30 @@ namespace UnderdogsEnhanced
                 GameObject.DestroyImmediate(missileReticleTexture);
                 missileReticleTexture = null;
             }
+        }
+
+        private static void EnsureSharedDynamicAssetsValid()
+        {
+            if (!sharedDynamicAssetsLoaded)
+                return;
+
+            if (LimitedLrfRangeReadoutTemplate != null)
+                return;
+
+            sharedDynamicAssetsLoaded = false;
+            LoadDynamicAssets();
+        }
+
+        private static void EnsureOpticsDynamicAssetsValid()
+        {
+            if (!opticsDynamicAssetsLoaded)
+                return;
+
+            if (ThermalFlirPostPrefab != null && ThermalFlirBlitMaterial != null && MissileReticleTemplate != null)
+                return;
+
+            opticsDynamicAssetsLoaded = false;
+            LoadDynamicAssets();
         }
 
         private static bool RequireSharedDynamicAsset(string assetName)

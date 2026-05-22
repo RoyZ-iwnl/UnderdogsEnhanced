@@ -1802,7 +1802,12 @@ namespace UnderdogsEnhanced
         private static ReticleMesh LoadPeriZ11DayDonorMesh()
         {
             if (emes_day_donor_mesh != null)
-                return emes_day_donor_mesh;
+            {
+                if (emes_day_donor_mesh.reticleSO != null)
+                    return emes_day_donor_mesh;
+
+                emes_day_donor_mesh = null;
+            }
 
             Vehicle donorVehicle = UEAssetUtil.PrewarmVanillaVehicle("MARDER1A2", new[] { "Marder1A1_rig/hull/turret/FLIR", "FLIR", "Marder1A1_rig/hull/turret/PERI Z11", "PERI Z11" });
             if (donorVehicle == null)
@@ -1829,8 +1834,14 @@ namespace UnderdogsEnhanced
         {
             if (emes_thermal_donor != null)
             {
-                EnsureThermalDebugDefaultsInitialized(emes_thermal_donor);
-                return emes_thermal_donor;
+                if (emes_thermal_donor.NfovMesh != null && emes_thermal_donor.WfovMesh != null
+                    && emes_thermal_donor.NfovMesh.reticleSO != null && emes_thermal_donor.WfovMesh.reticleSO != null)
+                {
+                    EnsureThermalDebugDefaultsInitialized(emes_thermal_donor);
+                    return emes_thermal_donor;
+                }
+
+                emes_thermal_donor = null;
             }
 
             Vehicle donorVehicle = UEAssetUtil.PrewarmVanillaVehicle("MARDER1A2", new[] { "Marder1A1_rig/hull/turret/FLIR", "FLIR", "Marder1A1_rig/hull/turret/PERI Z11", "PERI Z11" });

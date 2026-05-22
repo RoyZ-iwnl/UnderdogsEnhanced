@@ -406,7 +406,19 @@ namespace UnderdogsEnhanced
             var f_cachedReticles = typeof(ReticleMesh).GetField("cachedReticles", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
             var cachedReticles = f_cachedReticles?.GetValue(null) as System.Collections.IDictionary;
             if (cachedReticles == null || !cachedReticles.Contains(cacheKey))
+            {
+                try { rm.Load(); } catch { }
+                cachedReticles = f_cachedReticles?.GetValue(null) as System.Collections.IDictionary;
+            }
+
+            if (cachedReticles == null || !cachedReticles.Contains(cacheKey))
+            {
+#if DEBUG
+                if (UnderdogsDebug.DEBUG_LRF)
+                    MelonLogger.Warning($"[TIMING] LRF reticle cache missing after Load(): {cacheKey}");
+#endif
                 return;
+            }
 
             var srcCached = cachedReticles[cacheKey];
             var cachedType = srcCached.GetType();
