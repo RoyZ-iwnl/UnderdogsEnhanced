@@ -21,9 +21,9 @@ namespace UnderdogsEnhanced
             pt76_enabled.Description = "////////////////////////////////////PT-76B Mod////////////////////////////////////";
 
             pt76_lrf = cfg.CreateEntry("PT-76B Rangefinder", true);
-            pt76_lrf.Description = "Gives PT-76B a laser rangefinder with auto-ranging (default: enabled)";
+            pt76_lrf.Comment = "Gives PT-76B a laser rangefinder with auto-ranging (default: enabled)";
             pt76_optics = cfg.CreateEntry("PT-76B Optics", true);
-            pt76_optics.Description = "Adds zoom levels to PT-76B gunner sight (default: enabled)";
+            pt76_optics.Comment = "Adds zoom levels to PT-76B gunner sight (default: enabled)";
         }
 
         public static void Apply(Vehicle vic)

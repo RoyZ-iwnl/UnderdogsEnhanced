@@ -171,6 +171,9 @@ namespace UnderdogsEnhanced
             bundle.Ammo.Mass = params_.mass;
             bundle.Ammo.CachedIndex = -1;
 
+            // 立即缓存弹药到效果系统
+            UECommonUtil.CacheAmmo(bundle.Ammo);
+
             bundle.AmmoCodex = ScriptableObject.CreateInstance<AmmoCodexScriptable>();
             bundle.AmmoCodex.AmmoType = bundle.Ammo;
             bundle.AmmoCodex.name = $"ammo_{ammoType.ToLower()}";

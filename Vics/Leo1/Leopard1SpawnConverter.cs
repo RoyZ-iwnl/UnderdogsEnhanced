@@ -21,10 +21,11 @@ namespace UnderdogsEnhanced
             { "LEO1A3A1", "Leopard 1A3A1" },
             { "LEO1A3A2", "Leopard 1A3A2" },
             { "LEO1A3A3", "Leopard 1A3A3" },
-            { "LEO1A1", "Leopard A1A1" },
-            { "LEO1A1A2", "Leopard A1A2" },
-            { "LEO1A1A3", "Leopard A1A3" },
-            { "LEO1A1A4", "Leopard A1A4" }
+            { "LEO1A1", "Leopard 1A1A1" },
+            { "LEO1A1A2", "Leopard 1A1A2" },
+            { "LEO1A1A3", "Leopard 1A1A3" },
+            { "LEO1A1A4", "Leopard 1A1A4" },
+            { "LEO1A4", "Leopard 1A4" }
         };
 
         // 目标 Key - A1A4

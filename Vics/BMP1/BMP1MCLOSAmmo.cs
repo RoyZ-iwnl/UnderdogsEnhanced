@@ -429,6 +429,9 @@ namespace UnderdogsEnhanced
             // === 弹药属性 ===
             ammo_9m14_mclos.CachedIndex = -1;
 
+            // 立即缓存弹药到效果系统
+            UECommonUtil.CacheAmmo(ammo_9m14_mclos);
+
             // 创建弹药图鉴条目
             ammo_codex_9m14_mclos = ScriptableObject.CreateInstance<AmmoCodexScriptable>();
             ammo_codex_9m14_mclos.AmmoType = ammo_9m14_mclos;

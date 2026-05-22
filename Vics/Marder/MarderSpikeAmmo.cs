@@ -187,6 +187,9 @@ namespace UnderdogsEnhanced
             SpikeAmmo.GuidanceNoLoiterRange = 0f;
             SpikeAmmo.CachedIndex = -1;
 
+            // 立即缓存弹药到效果系统
+            UECommonUtil.CacheAmmo(SpikeAmmo);
+
             spikeCodex = ScriptableObject.CreateInstance<AmmoCodexScriptable>();
             spikeCodex.AmmoType = SpikeAmmo;
             spikeCodex.name = "ammo_spike_lr";

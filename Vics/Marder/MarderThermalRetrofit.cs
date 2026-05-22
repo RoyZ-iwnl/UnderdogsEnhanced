@@ -132,15 +132,20 @@ namespace UnderdogsEnhanced
                 ConfigureThermalSlot(targetSlot, thermalDonor);
                 SetupThermalPost(targetOptic.gameObject, targetSlot, thermalDonor.PostPrefab);
 
-                if (!targetOptic.gameObject.activeSelf)
-                    targetOptic.gameObject.SetActive(true);
                 if (!targetOptic.enabled)
                     targetOptic.enabled = true;
                 if (!targetSlot.enabled)
                     targetSlot.enabled = true;
 
                 try { targetSlot.RefreshAvailability(); } catch { }
-                try { targetSlot.ForceUpdateFov(); } catch { }
+
+                // GameReady 阶段 optic 尚未被 GHPC 初始化，FovLimitedItems 未评估。
+                // 若此时保持两个 mesh active，玩家切到热成像前两者会同时在世界中显示。
+                // 初始 inactive，等玩家切到热成像时 GHPC 自动按 FovLimitedItems 激活对应 mesh。
+                if (hostNarrowMesh != null && hostNarrowMesh.gameObject != null)
+                    hostNarrowMesh.gameObject.SetActive(false);
+                if (wideMesh != null && wideMesh.gameObject != null)
+                    wideMesh.gameObject.SetActive(false);
 
                 return true;
             }
@@ -313,7 +318,13 @@ namespace UnderdogsEnhanced
         private static ThermalDonor LoadDonor()
         {
             if (donor != null)
-                return donor;
+            {
+                if (donor.Optic != null && donor.NarrowMesh != null && donor.WideMesh != null
+                    && donor.NarrowMesh.reticleSO != null && donor.WideMesh.reticleSO != null)
+                    return donor;
+
+                donor = null;
+            }
 
             Vehicle donorVehicle = UEAssetUtil.PrewarmVanillaVehicle(DonorVehicleName, new[]
             {

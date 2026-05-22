@@ -19,7 +19,7 @@ namespace UnderdogsEnhanced
             t54a_enabled.Description = "////////////////////////////////////T-54A Mod////////////////////////////////////";
 
             t54a_lrf = cfg.CreateEntry("T-54A Rangefinder", true);
-            t54a_lrf.Description = "Gives T-54A a laser rangefinder with auto-ranging (default: enabled)";
+            t54a_lrf.Comment = "Gives T-54A a laser rangefinder with auto-ranging (default: enabled)";
         }
 
         public static void Apply(Vehicle vic)

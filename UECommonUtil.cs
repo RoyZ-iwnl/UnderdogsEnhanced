@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using GHPC.Camera;
 using GHPC.Equipment.Optics;
+using GHPC.Effects;
 using GHPC.Weapons;
 using GHPC.Weaponry;
 using UnityEngine;
@@ -160,6 +161,9 @@ namespace UnderdogsEnhanced
             "MainMenu2-1_Scene",
             "t64_menu"
         };
+
+        private static ImpactEffectsDatabaseScriptable s_impactFxDb;
+        private static ImpactDecalsManager s_impactDecalsManager;
 
         internal static bool IsMenuScene(string sceneName)
         {
@@ -821,6 +825,42 @@ namespace UnderdogsEnhanced
             // 添加热源组件用于FLIR显示
             GHPC.Thermals.HeatSource src = parent.AddComponent<GHPC.Thermals.HeatSource>();
             src.heat = heat;
+        }
+
+        /// <summary>
+        /// 缓存弹药类型到游戏的效果系统中
+        /// </summary>
+        /// <param name="ammo">要缓存的弹药类型</param>
+        internal static void CacheAmmo(AmmoType ammo)
+        {
+            if (ammo == null) return;
+
+            // 获取ImpactEffectsDatabaseScriptable
+            if (s_impactFxDb == null)
+            {
+                s_impactFxDb = Resources.FindObjectsOfTypeAll<ImpactEffectsDatabaseScriptable>()[0];
+            }
+
+            // 获取ImpactDecalsManager
+            if (s_impactDecalsManager == null)
+            {
+                s_impactDecalsManager = ImpactDecalsManager.Instance;
+            }
+
+            int id;
+
+            // 缓存到弹道痕迹系统
+            if (s_impactDecalsManager != null && s_impactDecalsManager._ImpactDecalsScriptable != null)
+            {
+                s_impactDecalsManager._ImpactDecalsScriptable.CacheNewData(ammo, out id);
+            }
+
+            // 缓存到撞击效果系统
+            if (s_impactFxDb != null)
+            {
+                s_impactFxDb.CacheNewData(ammo, out id);
+                ammo.CachedIndex = id;
+            }
         }
 
     }

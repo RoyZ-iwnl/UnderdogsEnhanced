@@ -578,6 +578,36 @@ namespace UnderdogsEnhanced
             string vehicleName = vehicle?.FriendlyName ?? vehicle?.name ?? string.Empty;
             return string.Equals(vehicleName, "Leopard A1A3", StringComparison.OrdinalIgnoreCase);
         }
+
+        // ============================================================
+        // Leopard 1A4 PERI-R12 特殊检测
+        // ============================================================
+        private static bool IsPeriR12Optic(UsableOptic optic)
+        {
+            if (optic == null || !string.Equals(optic.name, "PERI-R12", StringComparison.OrdinalIgnoreCase))
+                return false;
+            return true;
+        }
+
+        private static int HidePeriR12Visuals(UsableOptic optic)
+        {
+            if (optic == null) return 0;
+            int changed = 0;
+
+            foreach (var t in optic.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == null) continue;
+                string n = t.name ?? string.Empty;
+
+                // PERI-R12 azimuth display and related visuals
+                if (n.Equals("peri_azimuth", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (DisableNodeVisualsRecursive(t)) changed++;
+                }
+            }
+
+            return changed;
+        }
         private static bool SuppressStockDayReticle(UsableOptic optic)
         {
             if (optic == null) return false;
@@ -697,6 +727,14 @@ namespace UnderdogsEnhanced
             string n = (t.name ?? string.Empty);
             if (n.Equals("rangefinder mark vis parent", StringComparison.OrdinalIgnoreCase))
                 return true;
+            // Leopard 1A4 E-Scale
+            if (n.Equals("E-Scale", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (n.Equals("E-Scale red", StringComparison.OrdinalIgnoreCase))
+                return true;
+            // Leopard 1A4 ReadyToFire indicator
+            if (n.Equals("ReadyToFire", StringComparison.OrdinalIgnoreCase))
+                return true;
 
             try
             {
@@ -719,6 +757,10 @@ namespace UnderdogsEnhanced
 
             string n = (t.name ?? string.Empty);
             if (n.Equals("Stereo rangefinder", StringComparison.OrdinalIgnoreCase)) return true;
+            // Leopard 1A4 Reticle Mesh
+            if (n.Equals("Reticle Mesh", StringComparison.OrdinalIgnoreCase)) return true;
+            // Leopard 1A4 PERI-R12 azimuth display
+            if (n.Equals("peri_azimuth", StringComparison.OrdinalIgnoreCase)) return true;
             return false;
         }
 
@@ -2500,6 +2542,13 @@ namespace UnderdogsEnhanced
                 ? "LEO1A1A1_rig/HULL/TURRET/Mantlet/--Gun Scripts--/PZB-200"
                 : "LEO1A1A1_rig/HULL/TURRET/--Turret Scripts--/Sights/B 171";
 
+            // Leopard 1A4 使用 PERI-R12
+            if (string.Equals(vehicleName, "Leopard 1A4", StringComparison.OrdinalIgnoreCase))
+            {
+                fallbackNightOpticName = "PERI-R12";
+                fallbackNightOpticPath = "LEO1A1A1_rig/HULL/TURRET/1A3 mantlet/--Gun Scripts--/PERI-R12";
+            }
+
             UsableOptic linkedNightOptic = null;
             try { linkedNightOptic = gpsDayOptic?.slot?.LinkedNightSight?.PairedOptic; } catch { }
 
@@ -3394,6 +3443,14 @@ namespace UnderdogsEnhanced
                         UnderdogsDebug.LogEMES($"[EMES18] Disabled stock render-texture visuals: {hiddenByRT}");
                     if (hardKilled > 0)
                         UnderdogsDebug.LogEMES($"[EMES18] Hard-killed logged PZB artifacts: {hardKilled}");
+
+                    // PERI-R12 visual suppression
+                    if (IsPeriR12Optic(optic))
+                    {
+                        int periKilled = HidePeriR12Visuals(optic);
+                        if (periKilled > 0)
+                            UnderdogsDebug.LogEMES($"[EMES18] Hard-killed PERI-R12 artifacts: {periKilled}");
+                    }
 
                     var suppressor = optic.GetComponent<PzbDisplaySuppressor>();
                     if (suppressor == null) suppressor = optic.gameObject.AddComponent<PzbDisplaySuppressor>();

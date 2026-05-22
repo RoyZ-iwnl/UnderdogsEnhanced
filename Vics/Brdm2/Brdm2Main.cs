@@ -26,13 +26,13 @@ namespace UnderdogsEnhanced
             brdm2_enabled.Description = "////////////////////////////////////BRDM-2 Mod////////////////////////////////////";
 
             stab_brdm = cfg.CreateEntry("BRDM-2 Stabilizer", true);
-            stab_brdm.Description = "Gives BRDM-2 a stabilizer (default: enabled)";
+            stab_brdm.Comment = "Gives BRDM-2 a stabilizer (default: enabled)";
             brdm_turret_speed = cfg.CreateEntry("BRDM-2 Turret Speed", true);
-            brdm_turret_speed.Description = "Increases BRDM-2 turret traverse speed (default: enabled)";
+            brdm_turret_speed.Comment = "Increases BRDM-2 turret traverse speed (default: enabled)";
             brdm_optics = cfg.CreateEntry("BRDM-2 Optics", true);
-            brdm_optics.Description = "Adds zoom levels to BRDM-2 gunner sight (default: enabled)";
+            brdm_optics.Comment = "Adds zoom levels to BRDM-2 gunner sight (default: enabled)";
             brdm_lrf = cfg.CreateEntry("BRDM-2 Rangefinder", true);
-            brdm_lrf.Description = "Gives BRDM-2 a laser rangefinder (display only, no auto-ranging; default: enabled)";
+            brdm_lrf.Comment = "Gives BRDM-2 a laser rangefinder (display only, no auto-ranging; default: enabled)";
         }
 
         public static void Apply(Vehicle vic)

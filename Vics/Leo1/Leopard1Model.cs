@@ -367,13 +367,17 @@ namespace UnderdogsEnhanced
         }
 
         // ============================================================
-        // 4. 更新车辆名称
+        // 4. 更新车辆名称 (Leopard 1A1A4 → Leopard 1A5)
         // ============================================================
         private static void UpdateVehicleName(Vehicle vic)
         {
             if (vic._friendlyName != null)
             {
-                vic._friendlyName = vic._friendlyName.Replace("A1A4", "1A5");
+                // 精确匹配结尾的 1A1A4
+                if (vic._friendlyName.EndsWith("1A1A4", StringComparison.OrdinalIgnoreCase))
+                {
+                    vic._friendlyName = vic._friendlyName.Substring(0, vic._friendlyName.Length - 5) + "1A5";
+                }
             }
         }
 

@@ -26,13 +26,13 @@ namespace UnderdogsEnhanced
             btr70_enabled.Description = "////////////////////////////////////BTR-70 Mod////////////////////////////////////";
 
             stab_btr70 = cfg.CreateEntry("BTR-70 Stabilizer", true);
-            stab_btr70.Description = "Gives BTR-70 a stabilizer (default: enabled)";
+            stab_btr70.Comment = "Gives BTR-70 a stabilizer (default: enabled)";
             btr70_turret_speed = cfg.CreateEntry("BTR-70 Turret Speed", true);
-            btr70_turret_speed.Description = "Increases BTR-70 turret traverse speed (default: enabled)";
+            btr70_turret_speed.Comment = "Increases BTR-70 turret traverse speed (default: enabled)";
             btr70_optics = cfg.CreateEntry("BTR-70 Optics", true);
-            btr70_optics.Description = "Adds zoom levels to BTR-70 gunner sight (default: enabled)";
+            btr70_optics.Comment = "Adds zoom levels to BTR-70 gunner sight (default: enabled)";
             btr70_lrf = cfg.CreateEntry("BTR-70 Rangefinder", true);
-            btr70_lrf.Description = "Gives BTR-70 a laser rangefinder (display only, no auto-ranging; default: enabled)";
+            btr70_lrf.Comment = "Gives BTR-70 a laser rangefinder (display only, no auto-ranging; default: enabled)";
         }
 
         public static void Apply(Vehicle vic)

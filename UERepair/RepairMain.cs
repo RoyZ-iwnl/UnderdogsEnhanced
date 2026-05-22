@@ -29,7 +29,7 @@ namespace UnderdogsEnhanced
         public static void Config(MelonPreferences_Category cfg)
         {
             repair_enabled = cfg.CreateEntry("Repair Function", true);
-            repair_enabled.Description = "Enable vehicle repair function (press J to repair; default: enabled)";
+            repair_enabled.Comment = "Enable vehicle repair function (press J to repair; default: enabled)";
         }
 
         private const KeyCode RepairHotkey = KeyCode.J;

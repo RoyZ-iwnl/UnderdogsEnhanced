@@ -20,9 +20,9 @@ namespace UnderdogsEnhanced
             t64_enabled.Description = "////////////////////////////////////T-64 Mod////////////////////////////////////";
 
             t64_nsvt_optics = cfg.CreateEntry("T-64 NSVT Optics", true);
-            t64_nsvt_optics.Description = "Adds zoom levels to T-64 series NSVT sight (default: enabled)";
+            t64_nsvt_optics.Comment = "Adds zoom levels to T-64 series NSVT sight (default: enabled)";
             stab_t64_nsvt = cfg.CreateEntry("T-64 NSVT Stabilizer", true);
-            stab_t64_nsvt.Description = "Stabilizes T-64 series NSVT cupola and MG platform (default: enabled)";
+            stab_t64_nsvt.Comment = "Stabilizes T-64 series NSVT cupola and MG platform (default: enabled)";
         }
 
         public static void Apply(Vehicle vic)

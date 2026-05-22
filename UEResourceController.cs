@@ -99,6 +99,10 @@ namespace UnderdogsEnhanced
         {
             Initialize();
             UEAssetUtil.PrewarmVanillaVehicle("MARDER1A2", new[] { "Marder1A1_rig/hull/turret/FLIR", "FLIR", "Marder1A1_rig/hull/turret/PERI Z11", "PERI Z11" });
+            // BMP2_SA：包含30mm弹药（3UBR6/3UOR6），作为35mm改装的donor
+            UEAssetUtil.PrewarmVanillaVehicle("BMP2_SA");
+            // M2BRADLEY：包含25mm弹药（M791/M792），作为25mm改装的donor
+            UEAssetUtil.PrewarmVanillaVehicle("M2BRADLEY");
         }
 
         internal static void PrewarmMenuVanillaDonors()

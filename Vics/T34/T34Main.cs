@@ -24,11 +24,11 @@ namespace UnderdogsEnhanced
             t34_enabled.Description = "////////////////////////////////////T-34-85M Mod////////////////////////////////////";
 
             stab_t3485m = cfg.CreateEntry("T-34-85M Stabilizer", false);
-            stab_t3485m.Description = "Gives T-34-85M a stabilizer, a little bit buggy when you moving turret (default: disabled)";
+            stab_t3485m.Comment = "Gives T-34-85M a stabilizer, a little bit buggy when you moving turret (default: disabled)";
             t3485m_optics = cfg.CreateEntry("T-34-85M Optics", true);
-            t3485m_optics.Description = "Adds zoom levels to T-34-85M gunner sight (default: enabled)";
+            t3485m_optics.Comment = "Adds zoom levels to T-34-85M gunner sight (default: enabled)";
             t3485m_lrf = cfg.CreateEntry("T-34-85M Rangefinder", true);
-            t3485m_lrf.Description = "Gives T-34-85M a laser rangefinder with auto-ranging (default: enabled)";
+            t3485m_lrf.Comment = "Gives T-34-85M a laser rangefinder with auto-ranging (default: enabled)";
         }
 
         public static void Apply(Vehicle vic)

@@ -29,19 +29,19 @@ namespace UnderdogsEnhanced
             bmp1_enabled.Description = "////////////////////////////////////BMP-1 Mod////////////////////////////////////";
 
             stab_bmp = cfg.CreateEntry("BMP-1 Stabilizer", true);
-            stab_bmp.Description = "Gives BMP-1/BMP-1P a stabilizer (default: enabled)";
+            stab_bmp.Comment = "Gives BMP-1/BMP-1P a stabilizer (default: enabled)";
             stab_konkurs = cfg.CreateEntry("BMP-1P Konkurs Stab", false);
-            stab_konkurs.Description = "Gives the Konkurs on the BMP-1P a stabilizer(default: disabled)";
+            stab_konkurs.Comment = "Gives the Konkurs on the BMP-1P a stabilizer(default: disabled)";
             bmp_lrf = cfg.CreateEntry("BMP-1 Rangefinder", true);
-            bmp_lrf.Description = "Gives BMP-1/BMP-1P a laser rangefinder (display only, no auto-ranging; default: enabled)";
+            bmp_lrf.Comment = "Gives BMP-1/BMP-1P a laser rangefinder (display only, no auto-ranging; default: enabled)";
             bmp1_mclos = cfg.CreateEntry("BMP-1 9M14TV Malyutka-TV", true);
-            bmp1_mclos.Description = "Adds the fictional 9M14TV Malyutka-TV TV-guided missile for the BMP-1 (default: enabled)";
+            bmp1_mclos.Comment = "Adds the fictional 9M14TV Malyutka-TV TV-guided missile for the BMP-1 (default: enabled)";
             bmp1_mclos_ready_count = cfg.CreateEntry("BMP-1 MCLOS Ready Missiles", -1);
-            bmp1_mclos_ready_count.Description = "Ready rack missile count for BMP-1 MCLOS. -1 uses game's original count; >0 overrides.(max: 64)";
+            bmp1_mclos_ready_count.Comment = "Ready rack missile count for BMP-1 MCLOS. -1 uses game's original count; >0 overrides.(max: 64)";
             bmp1_mclos_flir_high_res = cfg.CreateEntry("BMP-1 MCLOS FLIR High Resolution", false);
-            bmp1_mclos_flir_high_res.Description = "Use 1024x576 FLIR resolution for BMP-1 MCLOS missile camera (default: low resolution)";
+            bmp1_mclos_flir_high_res.Comment = "Use 1024x576 FLIR resolution for BMP-1 MCLOS missile camera (default: low resolution)";
             bmp1_mclos_flir_no_scanline = cfg.CreateEntry("BMP-1 MCLOS FLIR Remove Scanline", false);
-            bmp1_mclos_flir_no_scanline.Description = "Remove FLIR refresh scanline effect for BMP-1 MCLOS missile camera (default: disabled)";
+            bmp1_mclos_flir_no_scanline.Comment = "Remove FLIR refresh scanline effect for BMP-1 MCLOS missile camera (default: disabled)";
         }
 
         internal static bool ShouldScheduleAmmoConversion()

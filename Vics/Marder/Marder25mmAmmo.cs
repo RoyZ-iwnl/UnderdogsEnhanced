@@ -78,6 +78,8 @@ namespace UnderdogsEnhanced
             if (loadoutManager?.LoadedAmmoList?.AmmoClips == null || weapon?.Feed?.ReadyRack?.ClipTypes == null)
                 return false;
 
+            weapon.RecoilBlurMultiplier = 0.3f;
+
             string apAmmoType = MarderMain.Get25mmApAmmoType();
             if (!EnsureAmmoBundles(apAmmoType))
                 return false;
@@ -254,10 +256,11 @@ namespace UnderdogsEnhanced
                 }
             }
 
-            if (currentClip != null)
-                UECommonUtil.ResetFeedForClip(weapon.Feed, currentAmmo, currentClip, true, queueClipType: true);
-            else
-                UECommonUtil.RestartFeed(weapon.Feed);
+            AmmoType.AmmoClip[] clipTypes = new AmmoType.AmmoClip[] { selectedBundles[BeltKind.AP].Clip, selectedBundles[BeltKind.HE].Clip };
+            AmmoType[] ammoTypes = new AmmoType[] { selectedBundles[BeltKind.AP].Ammo, selectedBundles[BeltKind.HE].Ammo };
+            int[] ammoCounts = new int[] { MarderMain.Get25mmApCount(), MarderMain.Get25mmHeCount() };
+
+            UECommonUtil.SyncAutocannonFeed(weapon, clipTypes, ammoTypes, ammoCounts, 0);
         }
 
         private static BeltKind ClassifyBelt(AmmoType.AmmoClip originalClip, int fallbackIndex)
@@ -327,6 +330,9 @@ namespace UnderdogsEnhanced
                 bundle.Ammo.MuzzleVelocity = Pmb090Params.velocity;
                 bundle.Ammo.Mass = Pmb090Params.mass;
 
+                // 立即缓存弹药到效果系统
+                UECommonUtil.CacheAmmo(bundle.Ammo);
+
                 bundle.Codex = ScriptableObject.CreateInstance<AmmoCodexScriptable>();
                 bundle.Codex.name = $"ammo_marder_pmb090_{desiredCapacity}";
                 bundle.Codex.AmmoType = bundle.Ammo;
@@ -346,11 +352,11 @@ namespace UnderdogsEnhanced
                 }
             }
 
-            // 创建clip（自定义容量）
+            // 创建clip（固定容量100发）
             bundle.Clip = new AmmoType.AmmoClip();
             UECommonUtil.ShallowCopy(bundle.Clip, originalClip);
             bundle.Clip.Name = bundle.Ammo.Name;
-            bundle.Clip.Capacity = desiredCapacity;
+            bundle.Clip.Capacity = 100;  // 固定每盒100发
             bundle.Clip.MinimalPattern = new[] { bundle.Codex };
 
             // 创建clip codex（用于LoadedAmmoList）
@@ -414,14 +420,8 @@ namespace UnderdogsEnhanced
             if (bundle == null || bundle.Ammo == null || bundle.Codex == null)
                 return false;
 
-            // 原生codex不需要检查Clip/ClipCodex/VisualModel
-            if (bundle.Codex == nativeM791Codex || bundle.Codex == nativeM792Codex)
-                return bundle.Clip != null && bundle.ClipCodex != null;
-
-            // 自创建的弹药需要完整检查
-            return bundle.Clip != null
-                && bundle.ClipCodex != null
-                && bundle.Ammo.VisualModel != null;
+            // 机炮弹药不强制要求VisualModel（参考ADATS/M2BradleyExtended）
+            return bundle.Clip != null && bundle.ClipCodex != null;
         }
 
         private static bool IsMainGunAmmoClip(AmmoType.AmmoClip clip)
